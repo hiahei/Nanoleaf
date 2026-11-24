@@ -122,9 +122,12 @@ const elements = {
   fontIncreaseButton: document.querySelector('#fontIncreaseButton'),
   fontSizeLabel: document.querySelector('#fontSizeLabel'),
   homeCompilerStatus: document.querySelector('#homeCompilerStatus'),
+  homeDropOverlay: document.querySelector('#homeDropOverlay'),
   homeShareButton: document.querySelector('#homeShareButton'),
   homeThemeButton: document.querySelector('#homeThemeButton'),
   hostProjectActions: document.querySelector('#hostProjectActions'),
+  importZipButton: document.querySelector('#importZipButton'),
+  importZipInput: document.querySelector('#importZipInput'),
   localModeBadge: document.querySelector('#localModeBadge'),
   localModeLabel: document.querySelector('#localModeLabel'),
   logPanel: document.querySelector('#logPanel'),
@@ -136,6 +139,7 @@ const elements = {
   pdfPanel: document.querySelector('#pdfPanel'),
   pdfPages: document.querySelector('#pdfPages'),
   pdfPreview: document.querySelector('#pdfPreview'),
+  pdfPreviewControls: document.querySelector('#pdfPreviewControls'),
   pdfRenderStatus: document.querySelector('#pdfRenderStatus'),
   pdfDownloadButton: document.querySelector('#pdfDownloadButton'),
   pdfAnnotateButton: document.querySelector('#pdfAnnotateButton'),
@@ -370,7 +374,7 @@ function initializeCodeEditor() {
     displayIndentGuides: true,
     fadeFoldWidgets: true,
     fixedWidthGutter: true,
-    fontFamily: '"Cascadia Code", "Cascadia Mono", Consolas, monospace',
+    fontFamily: '"SF Mono", Menlo, Monaco, "Cascadia Code", monospace',
     highlightActiveLine: true,
     highlightGutterLine: true,
     highlightSelectedWord: true,
@@ -420,7 +424,7 @@ function initializeCodeEditor() {
   });
   editor.commands.addCommand({
     name: 'localtexToggleWrap',
-    bindKey: { win: 'Alt-Z', mac: 'Alt-Z' },
+    bindKey: { win: 'Alt-Z', mac: 'Option-Z' },
     exec: () => toggleEditorWrap(),
   });
 
@@ -1558,7 +1562,7 @@ function renderProjects() {
     renderProjectListEmpty({
       icon: 'Tx',
       title: '开始第一个项目',
-      message: '打开一个本地文件夹或主 .tex 文件，即可开始写作。',
+      message: '打开本地文件夹、主 .tex 文件，或直接将 .zip 压缩包拖入页面即可开始写作。',
       actionLabel: '打开项目文件夹',
       action: () => browseProject('folder'),
     });
@@ -1718,6 +1722,62 @@ async function browseProject(mode) {
     elements.openTexButton.disabled = false;
     elements.openFolderButton.disabled = false;
     button.textContent = originalLabel;
+  }
+}
+
+let zipImportInProgress = false;
+
+async function importZipProject(file) {
+  if (!file || zipImportInProgress) return false;
+  if (state.config?.lan?.isHost === false) {
+    showToast('只有主机可以导入本地 .zip 项目。', true);
+    return false;
+  }
+  if (!/\.zip$/i.test(String(file.name || ''))) {
+    showToast('请选择或拖入 .zip 格式的 LaTeX 项目压缩包。', true);
+    return false;
+  }
+  if (!await confirmDiscard()) return false;
+
+  zipImportInProgress = true;
+  const originalLabel = elements.importZipButton?.textContent || '导入 .zip';
+  if (elements.importZipButton) {
+    elements.importZipButton.disabled = true;
+    elements.importZipButton.textContent = '正在解压…';
+  }
+  elements.openFolderButton.disabled = true;
+  elements.openTexButton.disabled = true;
+  showToast(`正在解压并导入 ${file.name}…`);
+
+  try {
+    const endpoint = `/api/projects/import-zip?name=${encodeURIComponent(file.name)}`;
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/zip',
+        ...(accessToken ? { 'X-LocalTeX-Token': accessToken } : {}),
+      },
+      body: file,
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(data.error || `导入 .zip 失败（${response.status}）`);
+    }
+    await loadProjects();
+    await openProject(data.project.id);
+    showToast(`已从 ${file.name} 导入项目“${data.project.name}”`);
+    return true;
+  } catch (error) {
+    showToast(error.message || '导入 .zip 失败。', true);
+    return false;
+  } finally {
+    zipImportInProgress = false;
+    if (elements.importZipButton) {
+      elements.importZipButton.disabled = false;
+      elements.importZipButton.textContent = originalLabel;
+    }
+    elements.openFolderButton.disabled = false;
+    elements.openTexButton.disabled = false;
   }
 }
 
@@ -1935,7 +1995,7 @@ function initializeFileActions() {
     if (restoreFocus && target) focusFileRow(target.path);
     target = null;
   };
-  for (const [action, label, shortcut] of [['create', '新建文件', ''], ['rename', '重命名', 'F2'], ['delete', '删除', 'Delete']]) {
+  for (const [action, label, shortcut] of [['create', '新建文件', ''], ['rename', '重命名', 'F2'], ['delete', '删除', '⌘⌫']]) {
     const button = document.createElement('button');
     button.type = 'button';
     button.setAttribute('role', 'menuitem');
@@ -1969,8 +2029,14 @@ function initializeFileActions() {
     menu.querySelector('button').focus();
   });
   elements.fileTree.addEventListener('keydown', (event) => {
-    if (event.repeat || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return;
-    const action = event.key === 'F2' ? 'rename' : event.key === 'Delete' ? 'delete' : null;
+    if (event.repeat) return;
+    const macBackspaceDelete = event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey && event.key === 'Backspace';
+    const plainKey = !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey;
+    const action = plainKey && event.key === 'F2'
+      ? 'rename'
+      : (macBackspaceDelete || (plainKey && event.key === 'Delete'))
+        ? 'delete'
+        : null;
     const row = event.target.closest('.tree-row');
     if (!action || !row) return;
     event.preventDefault();
@@ -3485,6 +3551,7 @@ function switchPreview(tab) {
   elements.logTab.classList.toggle('active', visibility.log);
   elements.pdfTab.setAttribute('aria-selected', String(visibility.pdf));
   elements.logTab.setAttribute('aria-selected', String(visibility.log));
+  updatePdfPageIndicator();
 }
 
 function renderDiagnostics(diagnostics = []) {
@@ -3521,7 +3588,7 @@ function setCompileButtonRunning(running) {
   elements.compileButton.textContent = running ? '正在保存并编译…' : '保存并编译 ';
   if (!running) {
     const shortcut = document.createElement('kbd');
-    shortcut.textContent = 'Ctrl S';
+    shortcut.textContent = '⌘S';
     elements.compileButton.append(shortcut);
   }
 }
@@ -3638,6 +3705,7 @@ function clearPdfPreview() {
   elements.pdfPages.replaceChildren();
   setPdfRenderStatus();
   elements.pdfPreview.hidden = true;
+  if (elements.pdfPreviewControls) elements.pdfPreviewControls.hidden = true;
   elements.pdfPageIndicator.hidden = true;
   elements.pdfPageIndicator.textContent = '第 — / — 页';
   elements.pdfDownloadButton.disabled = true;
@@ -3739,14 +3807,16 @@ function hasSourceMappedPdf() {
 
 function updatePdfPreviewContext() {
   const sourceMapped = hasSourceMappedPdf();
+  const hasDocument = Boolean(pdfPreviewState.document);
+  if (elements.pdfPreviewControls) elements.pdfPreviewControls.hidden = !hasDocument;
   elements.pdfSyncHint.hidden = !sourceMapped;
-  elements.pdfPageIndicator.hidden = !pdfPreviewState.document;
+  elements.pdfPageIndicator.hidden = !hasDocument || elements.pdfPanel.hidden;
   schedulePdfPageIndicatorUpdate();
   elements.pdfDownloadButton.disabled = !pdfPreviewState.document || !pdfPreviewState.source;
   elements.pdfResetZoomButton.disabled = !pdfPreviewState.document;
   elements.pdfAnnotateButton.disabled = !pdfPreviewState.document;
   elements.pdfPreview.title = sourceMapped
-    ? '左键选择文字；右键拖动平移；Alt+单击定位源码'
+    ? '左键选择文字；右键拖动平移；⌥+单击定位源码'
     : '左键选择文字；右键拖动平移';
   elements.pdfPreview.setAttribute(
     'aria-label',
@@ -3876,10 +3946,24 @@ function resetPdfPreview() {
 }
 
 function zoomPdfPreview(event) {
-  if (!event.ctrlKey || !pdfPreviewState.document) return;
+  if (!(event.ctrlKey || event.metaKey) || !pdfPreviewState.document) return;
   event.preventDefault();
   const factor = event.deltaY < 0 ? 1.12 : 1 / 1.12;
   pdfPreviewState.zoom = clamp(pdfPreviewState.zoom * factor, 0.6, 2.5);
+  queuePdfRender();
+}
+
+let safariGestureStartZoom = 1;
+function startSafariPdfGesture(event) {
+  if (!pdfPreviewState.document) return;
+  event.preventDefault();
+  safariGestureStartZoom = pdfPreviewState.zoom;
+}
+
+function updateSafariPdfGesture(event) {
+  if (!pdfPreviewState.document || !Number.isFinite(event.scale)) return;
+  event.preventDefault();
+  pdfPreviewState.zoom = clamp(safariGestureStartZoom * event.scale, 0.6, 2.5);
   queuePdfRender();
 }
 
@@ -4148,7 +4232,7 @@ function visiblePdfPage() {
 
 function updatePdfPageIndicator() {
   const totalPages = Number(pdfPreviewState.document?.numPages) || 0;
-  if (!totalPages || elements.pdfPreview.hidden) {
+  if (!totalPages || elements.pdfPreview.hidden || elements.pdfPanel.hidden) {
     elements.pdfPageIndicator.hidden = true;
     return;
   }
@@ -4263,7 +4347,7 @@ async function jumpPdfToSource(event) {
   event.preventDefault();
   event.stopPropagation();
   if (state.compileStale) {
-    showToast('源码在上次编译后已有修改，请先按 Ctrl+S，再次 Alt+单击 PDF。', true);
+    showToast('源码在上次编译后已有修改，请先按 ⌘S，再次 ⌥+单击 PDF。', true);
     return;
   }
 
@@ -4403,6 +4487,133 @@ async function uploadFiles(fileList) {
   }
   await refreshFiles();
   showToast('文件上传完成。');
+}
+
+async function uploadDroppedFiles(fileList, directory = '') {
+  if (!state.activeProject || !fileList?.length) return;
+  let uploadedCount = 0;
+  for (const file of fileList) {
+    const cleanName = String(file.name || '').replaceAll('\\', '/').split('/').pop();
+    if (!cleanName) continue;
+    const targetPath = directory ? `${directory}/${cleanName}` : cleanName;
+    const dataUrl = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+    const base64 = String(dataUrl).split(',')[1];
+    await api('/api/upload', {
+      method: 'POST',
+      body: JSON.stringify({ path: targetPath, data: base64 }),
+    });
+    uploadedCount += 1;
+  }
+  if (uploadedCount > 0) {
+    if (directory) state.collapsedFolders.delete(directory);
+    await refreshFiles();
+    showToast(
+      uploadedCount === 1
+        ? `已上传 ${directory ? `${directory}/` : ''}${fileList[0].name}`
+        : `已上传 ${uploadedCount} 个文件${directory ? ` 到 ${directory}/` : ''}`,
+    );
+  }
+}
+
+function isExternalFileDrag(event) {
+  const types = event.dataTransfer?.types;
+  return Boolean(types && Array.from(types).includes('Files'));
+}
+
+function initializeDragAndDrop() {
+  let homeDragDepth = 0;
+  let sidebarDragDepth = 0;
+
+  const hideDropVisuals = () => {
+    homeDragDepth = 0;
+    sidebarDragDepth = 0;
+    if (elements.homeDropOverlay) elements.homeDropOverlay.hidden = true;
+    elements.sidebarPane.classList.remove('is-drop-target');
+  };
+
+  window.addEventListener('dragover', (event) => {
+    if (!isExternalFileDrag(event)) return;
+    event.preventDefault();
+    if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
+  });
+
+  window.addEventListener('drop', async (event) => {
+    if (!isExternalFileDrag(event)) return;
+    event.preventDefault();
+    const files = Array.from(event.dataTransfer?.files || []);
+    const droppedInSidebar = !elements.editorApp.hidden && elements.sidebarPane.contains(event.target);
+    const targetRow = droppedInSidebar ? event.target.closest?.('.tree-row') : null;
+    hideDropVisuals();
+    if (!files.length) return;
+
+    const singleZip = files.length === 1 && /\.zip$/i.test(files[0].name || '');
+
+    if (!elements.projectHome.hidden) {
+      await importZipProject(files[0]);
+      return;
+    }
+
+    if (singleZip) {
+      if (state.config?.lan?.isHost === false) {
+        showToast('只有主机可以导入本地 .zip 项目。', true);
+        return;
+      }
+      if (window.confirm(`要将“${files[0].name}”解压为新的 LaTeX 项目并立即打开吗？`)) {
+        await importZipProject(files[0]);
+      }
+      return;
+    }
+
+    if (droppedInSidebar && state.activeProject) {
+      let targetDirectory = '';
+      if (targetRow?.dataset.path) {
+        const entry = state.files.find((item) => item.path === targetRow.dataset.path);
+        if (entry) {
+          targetDirectory = entry.type === 'directory' ? entry.path : parentDirectory(entry.path);
+        }
+      }
+      try {
+        await uploadDroppedFiles(files, targetDirectory);
+      } catch (error) {
+        showToast(error.message || '拖拽上传失败。', true);
+      }
+      return;
+    }
+
+    showToast('在编辑页可将文件拖入左侧“文件”栏上传，或拖入 .zip 导入新项目。');
+  });
+
+  elements.projectHome.addEventListener('dragenter', (event) => {
+    if (!isExternalFileDrag(event) || elements.projectHome.hidden || state.config?.lan?.isHost === false) return;
+    homeDragDepth += 1;
+    if (elements.homeDropOverlay) elements.homeDropOverlay.hidden = false;
+  });
+
+  elements.projectHome.addEventListener('dragleave', (event) => {
+    if (!isExternalFileDrag(event)) return;
+    homeDragDepth = Math.max(0, homeDragDepth - 1);
+    if (homeDragDepth === 0 && elements.homeDropOverlay) elements.homeDropOverlay.hidden = true;
+  });
+
+  elements.sidebarPane.addEventListener('dragenter', (event) => {
+    if (!isExternalFileDrag(event) || elements.editorApp.hidden) return;
+    sidebarDragDepth += 1;
+    elements.sidebarPane.classList.add('is-drop-target');
+  });
+
+  elements.sidebarPane.addEventListener('dragleave', (event) => {
+    if (!isExternalFileDrag(event)) return;
+    sidebarDragDepth = Math.max(0, sidebarDragDepth - 1);
+    if (sidebarDragDepth === 0) elements.sidebarPane.classList.remove('is-drop-target');
+  });
+
+  window.addEventListener('dragend', hideDropVisuals);
+  window.addEventListener('blur', hideDropVisuals);
 }
 
 async function initialize() {
@@ -4565,6 +4776,8 @@ elements.pdfSendAnnotationsButton.addEventListener('click', () => {
   sendPdfAnnotationsToCodex().catch((error) => showToast(error.message, true));
 });
 elements.pdfPreview.addEventListener('wheel', zoomPdfPreview, { passive: false });
+elements.pdfPreview.addEventListener('gesturestart', startSafariPdfGesture, { passive: false });
+elements.pdfPreview.addEventListener('gesturechange', updateSafariPdfGesture, { passive: false });
 elements.pdfPreview.addEventListener('pointerdown', startPdfAnnotation);
 elements.pdfPreview.addEventListener('pointermove', updatePdfAnnotationDraft);
 elements.pdfPreview.addEventListener('pointerup', finishPdfAnnotation);
@@ -4606,6 +4819,12 @@ elements.mainDocumentSelect.addEventListener('change', async () => {
   }
 });
 elements.openFolderButton.addEventListener('click', () => browseProject('folder'));
+elements.importZipButton?.addEventListener('click', () => elements.importZipInput?.click());
+elements.importZipInput?.addEventListener('change', async () => {
+  const [file] = Array.from(elements.importZipInput.files || []);
+  elements.importZipInput.value = '';
+  if (file) await importZipProject(file);
+});
 elements.openTexButton.addEventListener('click', () => browseProject('file'));
 elements.addPathButton.addEventListener('click', addProjectByPath);
 elements.projectsButton.addEventListener('click', showProjectHome);
@@ -4653,9 +4872,11 @@ window.addEventListener('keydown', (event) => {
     setPdfAnnotationMode(false);
     return;
   }
+  const keyLower = String(event.key || '').toLowerCase();
+  const matchesKey = (letter, code) => keyLower === letter || event.code === code;
   if (
     (event.ctrlKey || event.metaKey)
-    && event.key.toLowerCase() === 'f'
+    && matchesKey('f', 'KeyF')
     && elements.editorPane.contains(document.activeElement)
   ) {
     event.preventDefault();
@@ -4681,21 +4902,21 @@ window.addEventListener('keydown', (event) => {
     return;
   }
   if (!state.activeProject) return;
-  if ((event.ctrlKey || event.metaKey) && event.altKey && event.key.toLowerCase() === 'c') {
+  if ((event.ctrlKey || event.metaKey) && event.altKey && matchesKey('c', 'KeyC')) {
     event.preventDefault();
     if (isCodexCollapsed()) openCodexPane(true);
     else collapseCodexPane();
     return;
   }
-  if (event.altKey && event.key.toLowerCase() === 'z') {
+  if (event.altKey && !event.ctrlKey && !event.metaKey && matchesKey('z', 'KeyZ')) {
     event.preventDefault();
     toggleEditorWrap();
   }
-  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
+  if ((event.ctrlKey || event.metaKey) && !event.altKey && matchesKey('s', 'KeyS')) {
     event.preventDefault();
     compileDocument();
   }
-  if ((event.ctrlKey || event.metaKey) && event.altKey && event.key.toLowerCase() === 'j') {
+  if ((event.ctrlKey || event.metaKey) && event.altKey && matchesKey('j', 'KeyJ')) {
     event.preventDefault();
     jumpSourceToPdf();
   }
@@ -4722,4 +4943,5 @@ saveCollaborator();
 applyEditorView();
 initializePanelResizers();
 initializeFileActions();
+initializeDragAndDrop();
 initialize();

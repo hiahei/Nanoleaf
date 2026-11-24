@@ -4,11 +4,20 @@ const fsp = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
 const { randomBytes, randomUUID, timingSafeEqual } = require('node:crypto');
-const { spawn, spawnSync } = require('node:child_process');
+const { spawn } = require('node:child_process');
 const { attachCollaborationServer } = require('./collaboration-server');
 const { createCodexService } = require('./codex-service');
+const {
+  buildRuntimeEnv,
+  buildRuntimePath,
+  commandPath: resolveCommandPath,
+  safeRealpath,
+} = require('./runtime-env');
+const { synctexEditFallback, synctexViewFallback } = require('./synctex-fallback');
+const { importZipProjectToWorkspace } = require('./zip-import');
 
 const APP_ROOT = __dirname;
+process.env.PATH = buildRuntimePath(APP_ROOT);
 const PUBLIC_ROOT = path.join(APP_ROOT, 'public');
 const ACE_ASSETS_ROOT = path.join(APP_ROOT, 'node_modules', 'ace-builds', 'src-min-noconflict');
 const PDFJS_ASSETS_ROOT = path.join(APP_ROOT, 'node_modules', 'pdfjs-dist');
@@ -27,6 +36,8 @@ const HOST = process.env.LOCAL_TEX_HOST || '127.0.0.1';
 const PORT = Number(process.env.LOCAL_TEX_PORT || 4177);
 const NETWORK_CAPABLE = !['127.0.0.1', 'localhost', '::1'].includes(HOST);
 const MAX_BODY_BYTES = 30 * 1024 * 1024;
+const MAX_ZIP_BODY_BYTES = 200 * 1024 * 1024;
+const COMPILE_TIMEOUT_MS = 10 * 60 * 1000;
 const BUILD_DIRECTORY = '.tex-build';
 const LOCAL_PICKER_RESULT_PREFIX = '__LOCALTEX_SELECTED_PATH__:';
 
@@ -266,7 +277,7 @@ function lanAddresses() {
   for (const [interfaceName, entries] of Object.entries(os.networkInterfaces())) {
     for (const entry of entries || []) {
       if (entry.family !== 'IPv4' || entry.internal || entry.address.startsWith('169.254.')) continue;
-      const isVirtual = /tailscale|zerotier|hamachi|vpn|vEthernet|virtualbox|vmware|wsl|docker/i.test(interfaceName);
+      const isVirtual = /^(?:utun|awdl|llw|bridge|anpi|gif|stf|ap)\d*$|^vmenet|tailscale|zerotier|hamachi|vpn|tun|tap|vEthernet|virtualbox|vmware|vboxnet|wsl|docker/i.test(interfaceName);
       const isPrivate = entry.address.startsWith('10.')
         || entry.address.startsWith('192.168.')
         || /^172\.(1[6-9]|2\d|3[01])\./.test(entry.address);
@@ -411,13 +422,21 @@ async function findMainDocument(projectRoot, preferredFile = '') {
   return candidates[0] || '';
 }
 
+function comparableFsPath(targetPath) {
+  const resolved = safeRealpath(targetPath);
+  return process.platform === 'darwin' || process.platform === 'win32'
+    ? resolved.toLowerCase()
+    : resolved;
+}
+
 async function addProject(projectPath, preferredFile = '') {
   const absolutePath = path.resolve(String(projectPath || ''));
   const stat = await fsp.stat(absolutePath);
   if (!stat.isDirectory()) throw new Error('The selected project path is not a folder.');
 
   const projects = await loadProjectRegistry();
-  let project = projects.find((item) => path.resolve(item.path).toLowerCase() === absolutePath.toLowerCase());
+  const targetKey = comparableFsPath(absolutePath);
+  let project = projects.find((item) => comparableFsPath(item.path) === targetKey);
   if (!project) {
     project = {
       id: randomUUID(),
@@ -440,49 +459,51 @@ function parseLocalPickerOutput(output) {
   for (const rawLine of String(output || '').split(/\r?\n/)) {
     const line = rawLine.trim();
     if (line.startsWith(LOCAL_PICKER_RESULT_PREFIX)) {
-      return line.slice(LOCAL_PICKER_RESULT_PREFIX.length);
+      const selected = line.slice(LOCAL_PICKER_RESULT_PREFIX.length).trim();
+      if (selected.length > 1 && !/^[A-Za-z]:[\\/]$/.test(selected)) {
+        return selected.replace(/\/+$/, '');
+      }
+      return selected;
     }
   }
   return '';
 }
 
-function browseLocalPath(mode) {
-  if (process.platform !== 'win32') throw new Error('Native file browsing is currently available on Windows only.');
-
-  const modernFolderPickerSource = path.join(APP_ROOT, 'tools', 'picker', 'ModernFolderPicker.cs').replaceAll("'", "''");
-  const ownerScript = [
-    "Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; using System.Windows.Forms; public sealed class LocalTeXWindowWrapper : IWin32Window { public LocalTeXWindowWrapper(IntPtr handle) { Handle = handle; } public IntPtr Handle { get; private set; } } public static class LocalTeXNativeWindow { [DllImport(\"user32.dll\")] public static extern IntPtr GetForegroundWindow(); }' -ReferencedAssemblies System.Windows.Forms",
-    '$foregroundHandle = [LocalTeXNativeWindow]::GetForegroundWindow()',
-    '$owner = [LocalTeXWindowWrapper]::new($foregroundHandle)',
+function buildMacPickerScript(mode) {
+  if (mode === 'file') {
+    return [
+      'try',
+      '  activate',
+      '  set selectedFile to choose file with prompt "选择 LaTeX 主文档" of type {"tex", "org.tug.tex", "public.tex"}',
+      `  return "${LOCAL_PICKER_RESULT_PREFIX}" & (POSIX path of selectedFile)`,
+      'on error errMsg number errNum',
+      '  if errNum is -128 then return ""',
+      '  error errMsg number errNum',
+      'end try',
+    ];
+  }
+  return [
+    'try',
+    '  activate',
+    '  set selectedFolder to choose folder with prompt "选择 LaTeX 项目文件夹"',
+    `  return "${LOCAL_PICKER_RESULT_PREFIX}" & (POSIX path of selectedFolder)`,
+    'on error errMsg number errNum',
+    '  if errNum is -128 then return ""',
+    '  error errMsg number errNum',
+    'end try',
   ];
-  const folderScript = [
-    '[Console]::OutputEncoding = [System.Text.Encoding]::UTF8',
-    `Add-Type -Path '${modernFolderPickerSource}'`,
-    "$selected = [LocalTeX.NativeDialogs.ModernFolderPicker]::Pick('选择 LaTeX 项目文件夹', '选择文件夹')",
-    `if (-not [string]::IsNullOrWhiteSpace($selected)) { Write-Output ('${LOCAL_PICKER_RESULT_PREFIX}' + $selected) }`,
-  ].join('; ');
-  const fileScript = [
-    'Add-Type -AssemblyName System.Windows.Forms',
-    'Add-Type -AssemblyName System.Drawing',
-    '[Console]::OutputEncoding = [System.Text.Encoding]::UTF8',
-    ...ownerScript,
-    '$dialog = New-Object System.Windows.Forms.OpenFileDialog',
-    "$dialog.Title = '选择 LaTeX 主文档'",
-    "$dialog.Filter = 'LaTeX files (*.tex)|*.tex|All files (*.*)|*.*'",
-    '$dialog.Multiselect = $false',
-    '$result = if ($foregroundHandle -eq [IntPtr]::Zero) { $dialog.ShowDialog() } else { $dialog.ShowDialog($owner) }',
-    `if ($result -eq [System.Windows.Forms.DialogResult]::OK) { Write-Output ('${LOCAL_PICKER_RESULT_PREFIX}' + $dialog.FileName) }`,
-  ].join('; ');
+}
+
+function browseLocalPath(mode) {
+  if (process.platform !== 'darwin') {
+    throw new Error('Native file browsing on this branch requires macOS.');
+  }
+
+  const args = buildMacPickerScript(mode).flatMap((line) => ['-e', line]);
 
   return new Promise((resolve, reject) => {
-    const child = spawn('powershell.exe', [
-      '-NoLogo',
-      '-NoProfile',
-      '-STA',
-      '-Command',
-      mode === 'file' ? fileScript : folderScript,
-    ], {
-      windowsHide: true,
+    const child = spawn('/usr/bin/osascript', args, {
+      env: buildRuntimeEnv(process.env, {}, APP_ROOT),
     });
     const stdout = [];
     const stderr = [];
@@ -503,7 +524,11 @@ function browseLocalPath(mode) {
       const output = parseLocalPickerOutput(Buffer.concat(stdout).toString('utf8'));
       const errorOutput = Buffer.concat(stderr).toString('utf8').trim();
       if (code !== 0) {
-        reject(new Error(errorOutput || 'Could not open the local file picker.'));
+        if (/-128|User canceled/i.test(errorOutput)) {
+          resolve('');
+          return;
+        }
+        reject(new Error(errorOutput || 'Could not open the macOS Finder picker.'));
         return;
       }
       resolve(output);
@@ -535,6 +560,23 @@ function sendServerEvent(response, event) {
   response.write(`data: ${JSON.stringify(event)}\n\n`);
 }
 
+async function readBinaryBody(request, maximumBytes = MAX_ZIP_BODY_BYTES) {
+  const chunks = [];
+  let total = 0;
+
+  for await (const chunk of request) {
+    total += chunk.length;
+    if (total > maximumBytes) {
+      const error = new Error('上传的压缩包体积过大（上限 200 MB）。');
+      error.statusCode = 413;
+      throw error;
+    }
+    chunks.push(chunk);
+  }
+
+  return Buffer.concat(chunks);
+}
+
 async function readJsonBody(request) {
   const chunks = [];
   let total = 0;
@@ -552,44 +594,7 @@ async function readJsonBody(request) {
 }
 
 function commandPath(command) {
-  const executable = command.toLowerCase().endsWith('.exe') ? command : `${command}.exe`;
-
-  if (process.platform === 'win32') {
-    const portable = path.join(
-      APP_ROOT,
-      'tools',
-      'miktex',
-      'texmfs',
-      'install',
-      'miktex',
-      'bin',
-      'x64',
-      executable,
-    );
-    if (fs.existsSync(portable)) return portable;
-  }
-
-  const locator = process.platform === 'win32' ? 'where.exe' : 'which';
-  const result = spawnSync(locator, [command], {
-    encoding: 'utf8',
-    windowsHide: true,
-  });
-
-  if (result.status === 0) {
-    const discovered = result.stdout.split(/\r?\n/).map((line) => line.trim()).find(Boolean);
-    if (discovered) return discovered;
-  }
-
-  if (process.platform === 'win32') {
-    const candidates = [
-      process.env.LOCALAPPDATA && path.join(process.env.LOCALAPPDATA, 'Programs', 'MiKTeX', 'miktex', 'bin', 'x64', executable),
-      process.env.ProgramFiles && path.join(process.env.ProgramFiles, 'MiKTeX', 'miktex', 'bin', 'x64', executable),
-    ].filter(Boolean);
-    const bundled = candidates.find((candidate) => fs.existsSync(candidate));
-    if (bundled) return bundled;
-  }
-
-  return null;
+  return resolveCommandPath(command, APP_ROOT);
 }
 
 function detectCompiler() {
@@ -646,9 +651,10 @@ async function listWorkspace(directory, relativeBase = '') {
 function runProcess(command, args, cwd, environment = {}) {
   return new Promise((resolve) => {
     const startedAt = Date.now();
+    const extraDirs = path.isAbsolute(command) ? [path.dirname(command)] : [];
     const child = spawn(command, args, {
       cwd,
-      env: { ...process.env, ...environment },
+      env: buildRuntimeEnv(process.env, environment, APP_ROOT, extraDirs),
       windowsHide: true,
     });
 
@@ -665,7 +671,7 @@ function runProcess(command, args, cwd, environment = {}) {
     child.stdout.on('data', collect);
     child.stderr.on('data', collect);
 
-    const timeout = setTimeout(() => child.kill(), 120_000);
+    const timeout = setTimeout(() => child.kill(), COMPILE_TIMEOUT_MS);
 
     child.on('error', (error) => {
       clearTimeout(timeout);
@@ -808,7 +814,7 @@ async function compileTex(mainFile, workspaceRoot, projectId) {
   if (!compiler) {
     const message = [
       'No LaTeX compiler was found.',
-      'Install MiKTeX or TeX Live, then ensure latexmk or pdflatex is available in PATH.',
+      'Install MacTeX, BasicTeX, TinyTeX, or Tectonic (e.g. brew install tectonic), then ensure pdflatex, latexmk, or tectonic is available.',
     ].join('\n');
     return {
       ok: false,
@@ -853,9 +859,24 @@ async function compileTex(mainFile, workspaceRoot, projectId) {
       commandDescription = `latexmk ${args.join(' ')}`;
       result = await runProcess(compiler.command, args, sourceDirectory);
     } else if (compiler.kind === 'tectonic') {
-      const args = ['-X', 'compile', mainName, '--outdir', buildDirectory, '--synctex'];
+      const args = [
+        '-X',
+        'compile',
+        mainName,
+        '--outdir',
+        buildDirectory,
+        '--synctex',
+        '--keep-intermediates',
+        '--keep-logs',
+      ];
       commandDescription = `tectonic ${args.join(' ')}`;
       result = await runProcess(compiler.command, args, sourceDirectory);
+      if (
+        fs.existsSync(path.join(buildDirectory, `${mainStem}.bbl`))
+        || /Running BibTeX/i.test(result.output)
+      ) {
+        bibliographyTool = 'BibTeX';
+      }
     } else {
       const args = [
         '-interaction=nonstopmode',
@@ -966,7 +987,7 @@ async function handleApi(request, response, url) {
       return sendJson(response, 403, { error: '只有主机可以控制局域网分享。' });
     }
     if (!NETWORK_CAPABLE) {
-      return sendJson(response, 409, { error: '当前服务只监听本机，请使用 LocalTeX 启动器重新打开。' });
+      return sendJson(response, 409, { error: '当前服务只监听本机，请使用 LocalTeX.app 或 launch-localtex.sh 重新打开。' });
     }
     const body = await readJsonBody(request);
     if (typeof body.enabled !== 'boolean') {
@@ -1023,6 +1044,43 @@ async function handleApi(request, response, url) {
       return sendJson(response, 201, { project: projectView(project) });
     } finally {
       browseInProgress = false;
+    }
+  }
+
+  if (request.method === 'POST' && url.pathname === '/api/projects/import-zip') {
+    if (!isHostRequest(request)) {
+      return sendJson(response, 403, { error: '只有主机可以导入本地 .zip 项目。' });
+    }
+    const contentType = String(request.headers['content-type'] || '').toLowerCase();
+    let zipBuffer;
+    let fileName = String(url.searchParams.get('name') || '').trim();
+    if (contentType.includes('application/json')) {
+      const body = await readJsonBody(request);
+      fileName = String(body.name || fileName || 'project.zip').trim();
+      if (typeof body.data !== 'string' || !body.data) {
+        return sendJson(response, 400, { error: '请提供有效的 .zip 文件数据。' });
+      }
+      zipBuffer = Buffer.from(body.data, 'base64');
+    } else {
+      fileName = fileName || 'project.zip';
+      zipBuffer = await readBinaryBody(request, MAX_ZIP_BODY_BYTES);
+    }
+
+    if (!zipBuffer.length) {
+      return sendJson(response, 400, { error: '上传的 .zip 文件为空。' });
+    }
+
+    try {
+      const imported = await importZipProjectToWorkspace(zipBuffer, fileName, DEFAULT_WORKSPACE_ROOT);
+      const project = await addProject(imported.projectPath);
+      return sendJson(response, 201, {
+        project: projectView(project),
+        extractedFiles: imported.extractedFileCount,
+      });
+    } catch (error) {
+      return sendJson(response, error.statusCode || 400, {
+        error: error.message || '无法解压并导入该 .zip 文件。',
+      });
     }
   }
 
@@ -1363,22 +1421,38 @@ async function handleApi(request, response, url) {
     const sourceStat = await fsp.stat(sourcePath);
     if (!sourceStat.isFile()) return sendJson(response, 400, { error: 'The SyncTeX source is not a file.' });
 
+    const mainSourcePath = resolveInside(workspaceRoot, artifact.mainFile);
     const synctex = commandPath('synctex');
-    if (!synctex) return sendJson(response, 501, { error: 'The local SyncTeX utility is unavailable.' });
-    // Omitting the optional page hint avoids a Windows drive-letter ambiguity in SyncTeX 1.5.
-    const input = `${line}:${Number.isInteger(column) && column > 0 ? column : 1}:${sourcePath}`;
-    const result = await runProcess(synctex, ['view', '-i', input, '-o', artifact.pdfPath], workspaceRoot);
-    const positions = parseSynctexOutput(result.output)
-      .filter((item) => Number.isInteger(item.page) && Number.isFinite(item.x) && Number.isFinite(item.y))
-      .map((item) => ({
-        page: item.page,
-        x: item.x,
-        y: item.y,
-        h: Number.isFinite(item.h) ? item.h : item.x,
-        v: Number.isFinite(item.v) ? item.v : item.y,
-        width: Number.isFinite(item.width) ? item.width : 0,
-        height: Number.isFinite(item.height) ? Math.abs(item.height) : 0,
-      }));
+    let positions = [];
+    if (synctex) {
+      const col = Number.isInteger(column) && column > 0 ? column : 1;
+      const runView = async (candidatePath) => {
+        const input = `${line}:${col}:${candidatePath}`;
+        const result = await runProcess(synctex, ['view', '-i', input, '-o', artifact.pdfPath], workspaceRoot);
+        return parseSynctexOutput(result.output)
+          .filter((item) => Number.isInteger(item.page) && Number.isFinite(item.x) && Number.isFinite(item.y))
+          .map((item) => ({
+            page: item.page,
+            x: item.x,
+            y: item.y,
+            h: Number.isFinite(item.h) ? item.h : item.x,
+            v: Number.isFinite(item.v) ? item.v : item.y,
+            width: Number.isFinite(item.width) ? item.width : 0,
+            height: Number.isFinite(item.height) ? Math.abs(item.height) : 0,
+          }));
+      };
+      positions = await runView(sourcePath);
+      const realSourcePath = safeRealpath(sourcePath);
+      if (!positions.length && realSourcePath !== sourcePath) {
+        positions = await runView(realSourcePath);
+      }
+    } else {
+      positions = synctexViewFallback(artifact.synctexPath, {
+        sourcePath,
+        line,
+        mainDirectory: path.dirname(mainSourcePath),
+      });
+    }
     if (Number.isInteger(pageHint) && pageHint > 0) {
       positions.sort((left, right) => Math.abs(left.page - pageHint) - Math.abs(right.page - pageHint));
     }
@@ -1407,23 +1481,35 @@ async function handleApi(request, response, url) {
       return sendJson(response, 400, { error: 'A valid PDF page and position are required.' });
     }
 
+    const mainSourcePath = resolveInside(workspaceRoot, artifact.mainFile);
     const synctex = commandPath('synctex');
-    if (!synctex) return sendJson(response, 501, { error: 'The local SyncTeX utility is unavailable.' });
-    const outputPoint = `${page}:${x.toFixed(3)}:${y.toFixed(3)}:${artifact.pdfPath}`;
-    const result = await runProcess(synctex, ['edit', '-o', outputPoint], workspaceRoot);
-    const target = parseSynctexOutput(result.output)
-      .find((item) => item.input && Number.isFinite(item.line));
+    let target = null;
+    if (synctex) {
+      const outputPoint = `${page}:${x.toFixed(3)}:${y.toFixed(3)}:${artifact.pdfPath}`;
+      const result = await runProcess(synctex, ['edit', '-o', outputPoint], workspaceRoot);
+      target = parseSynctexOutput(result.output)
+        .find((item) => item.input && Number.isFinite(item.line)) || null;
+    } else {
+      target = synctexEditFallback(artifact.synctexPath, {
+        page,
+        x,
+        y,
+        mainDirectory: path.dirname(mainSourcePath),
+      });
+    }
     if (!target) {
       return sendJson(response, 404, {
         error: 'No source position was found at this PDF point. Try clicking directly on typeset text.',
       });
     }
 
-    const mainSourcePath = resolveInside(workspaceRoot, artifact.mainFile);
     const absoluteInput = path.isAbsolute(target.input)
       ? path.resolve(target.input)
       : path.resolve(path.dirname(mainSourcePath), target.input);
-    const sourceFile = normalizeRelative(path.relative(workspaceRoot, absoluteInput));
+    const directRelative = normalizeRelative(path.relative(workspaceRoot, absoluteInput));
+    const sourceFile = (!directRelative.startsWith('..') && !path.isAbsolute(directRelative))
+      ? directRelative
+      : normalizeRelative(path.relative(safeRealpath(workspaceRoot), safeRealpath(absoluteInput)));
     const verifiedInput = resolveInside(workspaceRoot, sourceFile);
     const extension = path.extname(verifiedInput).toLowerCase();
     if (!textExtensions.has(extension) && extension !== '') {
@@ -1503,6 +1589,9 @@ async function requestHandler(request, response) {
     const absolutePath = resolveInside(PUBLIC_ROOT, requestedPath);
     return await serveFile(response, absolutePath, false);
   } catch (error) {
+    if (error.statusCode) {
+      return sendJson(response, error.statusCode, { error: error.message || 'Request failed.' });
+    }
     if (error.code === 'ENOENT') {
       return sendJson(response, 404, { error: 'File not found.' });
     }

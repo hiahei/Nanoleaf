@@ -160,7 +160,7 @@ test('serves the editor and local configuration', async () => {
   assert.match(page, /id="sidebarResizer"/);
   assert.match(page, /id="collapseSidebarButton"/);
   assert.match(page, /id="expandSidebarButton"/);
-  assert.match(page, /保存并编译 <kbd>Ctrl S<\/kbd>/);
+  assert.match(page, /保存并编译 <kbd>⌘S<\/kbd>/);
   assert.doesNotMatch(page, /id="saveButton"/);
   assert.match(page, /id="previewResizer"/);
   assert.match(page, /向右拖动扩大编辑区/);
@@ -188,12 +188,15 @@ test('serves the editor and local configuration', async () => {
   assert.match(page, /id="pdfSendAnnotationsButton"/);
   assert.match(page, />恢复缩放</);
   assert.match(page, /源码 → PDF/);
-  assert.equal((page.match(/<kbd>Alt\+单击<\/kbd>/g) || []).length, 1);
+  assert.equal((page.match(/<kbd>⌥\+单击<\/kbd>/g) || []).length, 1);
   assert.doesNotMatch(page, /Ctrl\+单击/);
   assert.match(page, /源码 ⇄ PDF/);
   assert.match(page, /id="fileTree"[^>]+role="tree"/);
   assert.match(page, /id="sidebarModeLabel"/);
   assert.match(page, /class="project-overview"/);
+  assert.match(page, /id="importZipButton"/);
+  assert.match(page, /id="importZipInput"/);
+  assert.match(page, /id="homeDropOverlay"/);
   assert.match(page, /id="projectSearch"/);
   assert.doesNotMatch(page, /class="hero-workbench"/);
   assert.match(page, /id="shareDialog"/);
@@ -244,6 +247,8 @@ test('serves the editor and local configuration', async () => {
   assert.equal(appResponse.status, 200);
   const appScript = await appResponse.text();
   assert.match(appScript, /async function previewPdfFile\(file\)/);
+  assert.match(appScript, /async function importZipProject\(file\)/);
+  assert.match(appScript, /function initializeDragAndDrop\(\)/);
   assert.match(appScript, /loadPdfPreview\(pdfUrl, '', file\.path\)/);
   assert.match(appScript, /async function sendCodexPrompt\(/);
   assert.match(appScript, /function setPdfAnnotationMode\(/);
@@ -360,6 +365,7 @@ test('serves the editor and local configuration', async () => {
   assert.match(script, /function closeEditorFindbar\(/);
   assert.match(script, /function findEditorMatch\(/);
   assert.match(script, /bindKey: \{ win: 'Ctrl-F', mac: 'Command-F' \}/);
+  assert.match(script, /bindKey: \{ win: 'Alt-Z', mac: 'Option-Z' \}/);
   assert.match(script, /function isTexFilePath\(/);
   assert.match(script, /async function setMainDocument\(/);
   assert.match(script, /openFile\(file, false, true, true\)/);
@@ -457,21 +463,23 @@ test('serves the editor and local configuration', async () => {
   assert.match(styles, /inset: var\(--editor-findbar-height, 0\) 0 0/);
   assert.match(styles, /\.tree-compile-target/);
   assert.match(styles, /\.pdf-sync-marker/);
-  assert.match(styles, /#pdfPreview\[hidden\] \+ \.pdf-preview-controls/);
+  assert.match(styles, /#pdfPanel:has\(#pdfPreview\[hidden\]\) \.pdf-preview-controls/);
+  assert.match(styles, /\.pdf-preview-actions/);
   assert.match(styles, /\.pdf-reset-zoom-button/);
   assert.match(styles, /\.pdf-download-button/);
   assert.match(styles, /\.pdf-page-indicator/);
   assert.match(styles, /#pdfPreview\.is-panning/);
   assert.match(styles, /cursor: grabbing !important/);
   assert.match(styles, /\.pdf-pages\s*\{[\s\S]{0,120}width: max-content/);
-  assert.match(styles, /min-width: 156px/);
-  assert.match(styles, /bottom: 3px/);
-  assert.match(styles, /opacity: 0\.86/);
+  assert.match(styles, /\.pdf-preview-controls\s*\{[\s\S]{0,240}border-bottom: 1px solid var\(--line\)/);
+  assert.doesNotMatch(styles, /\.pdf-preview-controls\s*\{[\s\S]{0,180}position: absolute/);
   assert.match(styles, /\.editor-surface\.sync-pdf-ready \.ace_content/);
   assert.match(styles, /\.ace_synctex-line/);
   assert.match(styles, /:root\[data-theme="dark"\][\s\S]*--editor: #fcfdfd/);
   assert.match(styles, /html\[data-theme="dark"\] \.code-editor[\s\S]*color: #21312c/);
   assert.match(styles, /\.project-overview/);
+  assert.match(styles, /\.home-drop-overlay/);
+  assert.match(styles, /\.sidebar\.is-drop-target/);
   assert.match(styles, /\.project-search/);
   assert.match(styles, /\.tree-children/);
   assert.match(styles, /\.tree-folder-icon/);
@@ -539,8 +547,8 @@ test('serves the editor and local configuration', async () => {
   assert.equal(config.codex.reasoningEffort, '');
   assert.equal(config.codex.sandbox, 'read-only');
   if (config.compiler) {
-    const portableRoot = path.resolve(__dirname, '..', 'tools', 'miktex');
-    assert.ok(path.resolve(config.compilerPath).startsWith(`${portableRoot}${path.sep}`));
+    assert.equal(path.isAbsolute(config.compilerPath), true);
+    assert.equal(fs.existsSync(config.compilerPath), true);
   }
 });
 
@@ -1112,41 +1120,52 @@ test('reports completed Codex file changes even without a final agent message', 
   service.shutdown();
 });
 
-test('ships the modern Windows Explorer folder picker', async () => {
-  const pickerSource = await readFile(
-    path.join(__dirname, '..', 'tools', 'picker', 'ModernFolderPicker.cs'),
-    'utf8',
-  );
-  assert.match(pickerSource, /IFileOpenDialog/);
-  assert.match(pickerSource, /FileOpenOptions\.PickFolders/);
-  assert.match(pickerSource, /SetClientGuid/);
+test('uses native macOS Finder AppleScript dialogs for local browsing', async () => {
+  const serverSource = await readFile(path.join(__dirname, '..', 'server.js'), 'utf8');
+  assert.match(serverSource, /\/usr\/bin\/osascript/);
+  assert.match(serverSource, /choose folder with prompt/);
+  assert.match(serverSource, /choose file with prompt/);
+  assert.match(serverSource, /errNum is -128/);
 });
 
-test('ignores Windows picker warnings when reading the selected path', () => {
-  const selectedPath = String.raw`D:\papers\example-project`;
+test('normalizes macOS picker output and ignores extraneous lines', () => {
+  const selectedPath = '/Users/example/Documents/papers/sample-project';
   const output = [
-    '[WARNING] Ignore caches that are heterogeneous',
-    `__LOCALTEX_SELECTED_PATH__:${selectedPath}`,
+    'objc[12345]: Class FIFinderSyncExtensionHost is implemented in both ...',
+    `__LOCALTEX_SELECTED_PATH__:${selectedPath}/`,
     '',
-  ].join('\r\n');
+  ].join('\n');
 
   assert.equal(parseLocalPickerOutput(output), selectedPath);
-  assert.equal(parseLocalPickerOutput('[WARNING] Ignore caches that are heterogeneous\r\n'), '');
+  assert.equal(parseLocalPickerOutput('__LOCALTEX_SELECTED_PATH__:/\n'), '/');
+  assert.equal(parseLocalPickerOutput('some unrelated warning\n'), '');
 });
 
-test('ships a detached reusable LocalTeX launcher', async () => {
-  const launcher = await readFile(path.join(__dirname, '..', 'launch-localtex.ps1'), 'utf8');
-  const windowlessLauncher = await readFile(path.join(__dirname, '..', 'LocalTeX.vbs'), 'utf8');
-  const startCommand = await readFile(path.join(__dirname, '..', 'start-local.cmd'), 'utf8');
-  const stopScript = await readFile(path.join(__dirname, '..', 'stop-localtex.ps1'), 'utf8');
-  assert.match(launcher, /LOCAL_TEX_HOST = '0\.0\.0\.0'/);
-  assert.match(launcher, /-WindowStyle Hidden/);
-  assert.doesNotMatch(launcher, /-WindowStyle Normal/);
-  assert.match(windowlessLauncher, /WScript\.Shell/);
-  assert.match(windowlessLauncher, /launch-localtex\.ps1/);
-  assert.match(startCommand, /launch-localtex\.ps1/);
-  assert.doesNotMatch(startCommand, /node\.exe" server\.js/);
-  assert.match(stopScript, /portable Node\.js process/);
+test('ships detached reusable macOS LocalTeX launchers and stop script', async () => {
+  const root = path.join(__dirname, '..');
+  const launcherPath = path.join(root, 'launch-localtex.sh');
+  const stopScriptPath = path.join(root, 'stop-localtex.sh');
+  const commandShortcutPath = path.join(root, 'start-local.command');
+  const appPlistPath = path.join(root, 'LocalTeX.app', 'Contents', 'Info.plist');
+  const appBinaryPath = path.join(root, 'LocalTeX.app', 'Contents', 'MacOS', 'LocalTeX');
+
+  const launcher = await readFile(launcherPath, 'utf8');
+  const stopScript = await readFile(stopScriptPath, 'utf8');
+  const commandShortcut = await readFile(commandShortcutPath, 'utf8');
+  const appPlist = await readFile(appPlistPath, 'utf8');
+  const appBinary = await readFile(appBinaryPath, 'utf8');
+
+  assert.match(launcher, /LOCAL_TEX_HOST="0\.0\.0\.0"/);
+  assert.match(launcher, /nohup "\$NODE_BIN" "\$APP_ROOT\/server\.js"/);
+  assert.match(launcher, /\/usr\/bin\/open "\$LOCAL_URL"/);
+  assert.match(stopScript, /server\.js/);
+  assert.match(commandShortcut, /launch-localtex\.sh/);
+  assert.match(appPlist, /<key>LSUIElement<\/key>\s*<true\/>/);
+  assert.match(appBinary, /launch-localtex\.sh/);
+
+  for (const executable of [launcherPath, stopScriptPath, commandShortcutPath, appBinaryPath]) {
+    assert.notEqual(fs.statSync(executable).mode & 0o111, 0, `${path.basename(executable)} should be executable`);
+  }
 });
 
 test('lists and reads a project document', async () => {
@@ -1170,6 +1189,68 @@ test('writes browser saves directly to the local project file', async () => {
   });
   assert.equal(saveResponse.status, 200);
   assert.equal(fs.readFileSync(path.join(testWorkspace, 'disk-sync.tex'), 'utf8'), content);
+});
+
+test('imports a .zip project archive into the workspace and selects its main tex file', async () => {
+  const zlib = require('node:zlib');
+  const texSource = '\\documentclass{article}\n\\begin{document}\nImported from zip\n\\end{document}\n';
+  const nameBytes = Buffer.from('WrappedPaper/paper.tex', 'utf8');
+  const rawBytes = Buffer.from(texSource, 'utf8');
+  const compressed = zlib.deflateRawSync(rawBytes);
+
+  const localHeader = Buffer.alloc(30);
+  localHeader.writeUInt32LE(0x04034b50, 0);
+  localHeader.writeUInt16LE(20, 4);
+  localHeader.writeUInt16LE(0x0800, 6);
+  localHeader.writeUInt16LE(8, 8);
+  localHeader.writeUInt32LE(compressed.length, 18);
+  localHeader.writeUInt32LE(rawBytes.length, 22);
+  localHeader.writeUInt16LE(nameBytes.length, 26);
+
+  const centralHeader = Buffer.alloc(46);
+  centralHeader.writeUInt32LE(0x02014b50, 0);
+  centralHeader.writeUInt16LE(20, 4);
+  centralHeader.writeUInt16LE(20, 6);
+  centralHeader.writeUInt16LE(0x0800, 8);
+  centralHeader.writeUInt16LE(8, 10);
+  centralHeader.writeUInt32LE(compressed.length, 20);
+  centralHeader.writeUInt32LE(rawBytes.length, 24);
+  centralHeader.writeUInt16LE(nameBytes.length, 28);
+  centralHeader.writeUInt32LE(0, 42);
+
+  const localTotal = localHeader.length + nameBytes.length + compressed.length;
+  const centralTotal = centralHeader.length + nameBytes.length;
+  const eocd = Buffer.alloc(22);
+  eocd.writeUInt32LE(0x06054b50, 0);
+  eocd.writeUInt16LE(1, 8);
+  eocd.writeUInt16LE(1, 10);
+  eocd.writeUInt32LE(centralTotal, 12);
+  eocd.writeUInt32LE(localTotal, 16);
+  const zipPayload = Buffer.concat([localHeader, nameBytes, compressed, centralHeader, nameBytes, eocd]);
+
+  const response = await fetch(`${baseUrl}/api/projects/import-zip?name=arxiv-bundle.zip`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/zip' },
+    body: zipPayload,
+  });
+  const imported = await response.json();
+  assert.equal(response.status, 201, imported.error);
+  assert.equal(imported.extractedFiles, 1);
+  assert.equal(imported.project.name, 'arxiv-bundle');
+  assert.equal(imported.project.mainFile, 'paper.tex');
+  assert.equal(imported.project.exists, true);
+
+  const filesResponse = await fetch(`${baseUrl}/api/files`, {
+    headers: { 'X-LocalTeX-Project': imported.project.id },
+  });
+  const { files } = await filesResponse.json();
+  assert.ok(files.some((file) => file.path === 'paper.tex'));
+
+  const deleteResponse = await fetch(
+    `${baseUrl}/api/projects?id=${encodeURIComponent(imported.project.id)}`,
+    { method: 'DELETE' },
+  );
+  assert.equal(deleteResponse.status, 200);
 });
 
 test('provides a persistent local project list', async () => {

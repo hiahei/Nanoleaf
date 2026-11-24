@@ -17,8 +17,8 @@
   --editor: #fcfdfd;
   --shadow: 0 18px 48px rgba(24, 48, 40, 0.09);
   --shadow-soft: 0 8px 22px rgba(24, 48, 40, 0.06);
-  --ui-font: "Segoe UI Variable", Inter, "Segoe UI", "Microsoft YaHei UI", sans-serif;
-  --code-font: "Cascadia Code", "Cascadia Mono", Consolas, "Courier New", monospace;
+  --ui-font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Hiragino Sans GB", Inter, sans-serif;
+  --code-font: "SF Mono", Menlo, Monaco, "Cascadia Code", ui-monospace, monospace;
 }
 
 * {
@@ -60,11 +60,70 @@ body {
 }
 
 .project-home {
+  position: relative;
   width: 100%;
   height: 100%;
   overflow: auto;
   padding: 24px;
   background: #f3f6f5;
+}
+
+.home-drop-overlay {
+  position: fixed;
+  inset: 14px;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  border: 2px dashed var(--accent);
+  border-radius: 22px;
+  background: rgba(234, 244, 240, 0.86);
+  backdrop-filter: blur(8px);
+  pointer-events: none;
+}
+
+.home-drop-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 28px 36px;
+  border: 1px solid rgba(23, 107, 90, 0.24);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: var(--shadow);
+  text-align: center;
+}
+
+.home-drop-icon {
+  width: 52px;
+  height: 52px;
+  display: grid;
+  place-items: center;
+  margin-bottom: 4px;
+  border-radius: 14px;
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+  font-family: var(--code-font);
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+
+.home-drop-card strong {
+  color: var(--ink);
+  font-size: 16px;
+}
+
+.home-drop-card p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.sidebar.is-drop-target {
+  outline: 2px dashed var(--accent);
+  outline-offset: -4px;
+  background: var(--accent-soft);
 }
 
 .project-home-shell {
@@ -608,7 +667,7 @@ body {
   margin: 4px 0 0;
   overflow: hidden;
   color: var(--muted);
-  font-family: Consolas, monospace;
+  font-family: var(--code-font);
   font-size: 11px;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1056,7 +1115,7 @@ kbd {
 }
 
 .workspace-layout.codex-available.codex-collapsed .preview-heading {
-  right: 80px;
+  padding-right: 82px;
 }
 
 .workspace-layout.sidebar-collapsed .sidebar {
@@ -2024,33 +2083,32 @@ body.resizing-panels iframe {
   position: relative;
   display: flex;
   flex-direction: column;
+  container-type: inline-size;
   background:
     radial-gradient(circle, rgba(91, 112, 105, 0.13) 0.7px, transparent 0.8px) 0 0 / 15px 15px,
     #e7ecea;
 }
 
 .preview-heading {
-  position: absolute;
+  position: relative;
   z-index: 4;
-  top: 8px;
-  right: 8px;
-  min-height: 31px;
+  min-height: 40px;
+  flex: 0 0 auto;
   justify-content: space-between;
   gap: 12px;
-  padding: 0 9px;
-  border: 1px solid rgba(195, 208, 203, 0.9);
-  border-radius: 9px;
-  background: rgba(255, 255, 255, 0.91);
-  box-shadow: 0 5px 16px rgba(22, 42, 35, 0.11);
-  backdrop-filter: blur(8px);
+  padding: 0 12px;
+  border-bottom: 1px solid var(--line);
+  background: linear-gradient(180deg, #fff, #fbfcfc);
 }
 
 .tabs {
   align-self: stretch;
-  gap: 11px;
+  flex: 0 0 auto;
+  gap: 14px;
 }
 
 .preview-heading-meta {
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -2059,16 +2117,16 @@ body.resizing-panels iframe {
 .codex-edge-button {
   position: absolute;
   z-index: 9;
-  top: 8px;
+  top: 5px;
   right: -1px;
-  min-height: 38px;
+  min-height: 30px;
   display: inline-flex;
   align-items: center;
   gap: 6px;
   padding: 0 10px 0 9px;
   border: 1px solid rgba(23, 107, 90, 0.22);
   border-right: 0;
-  border-radius: 10px 0 0 10px;
+  border-radius: 8px 0 0 8px;
   background: rgba(238, 247, 244, 0.96);
   box-shadow: -4px 5px 16px rgba(24, 56, 46, 0.13);
   color: var(--accent-ink);
@@ -2093,79 +2151,76 @@ body.resizing-panels iframe {
 }
 
 .pdf-preview-controls {
-  position: absolute;
-  z-index: 4;
-  bottom: 3px;
-  left: 50%;
-  display: inline-flex;
+  position: relative;
+  z-index: 3;
+  width: 100%;
+  flex: 0 0 auto;
+  display: flex;
   align-items: center;
-  gap: 5px;
-  transform: translateX(-50%);
-  white-space: nowrap;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  padding: 6px 11px;
+  border-bottom: 1px solid var(--line);
+  background: #f5f9f7;
+}
+
+.pdf-preview-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-left: auto;
 }
 
 .pdf-sync-hint {
-  width: auto;
-  min-width: 156px;
-  min-height: 23px;
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  gap: 7px;
-  padding: 3px 9px;
-  border: 1px solid rgba(184, 201, 195, 0.84);
-  border-radius: 999px;
-  background: rgba(250, 252, 251, 0.84);
-  box-shadow: 0 2px 10px rgba(25, 46, 39, 0.12);
-  color: #496159;
-  font-size: 9px;
-  opacity: 0.86;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 11px;
   pointer-events: none;
   white-space: nowrap;
-  backdrop-filter: blur(8px);
 }
 
 .pdf-page-indicator {
-  min-width: 76px;
-  min-height: 23px;
+  flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 3px 9px;
-  border: 1px solid rgba(184, 201, 195, 0.84);
-  border-radius: 999px;
-  background: rgba(250, 252, 251, 0.88);
-  box-shadow: 0 2px 10px rgba(25, 46, 39, 0.12);
-  color: #3f5750;
+  padding: 2px 8px;
+  border: 1px solid rgba(23, 107, 90, 0.18);
+  border-radius: 6px;
+  background: var(--accent-soft);
+  color: var(--accent-ink);
   font-family: var(--code-font);
-  font-size: 9px;
-  font-weight: 700;
-  opacity: 0.9;
-  pointer-events: none;
-  backdrop-filter: blur(8px);
+  font-size: 11px;
+  font-weight: 650;
+  white-space: nowrap;
 }
 
 .pdf-reset-zoom-button,
 .pdf-download-button,
 .pdf-annotate-button,
 .pdf-send-annotations-button {
-  min-height: 25px;
+  min-height: 27px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 4px;
-  padding: 3px 9px;
-  border: 1px solid rgba(166, 192, 183, 0.92);
-  border-radius: 999px;
+  gap: 5px;
+  padding: 0 9px;
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
   outline: none;
-  background: rgba(244, 250, 248, 0.94);
-  box-shadow: 0 2px 10px rgba(25, 46, 39, 0.14);
-  color: var(--accent-ink);
+  background: var(--panel);
+  box-shadow: 0 1px 2px rgba(20, 42, 35, 0.05);
+  color: var(--ink);
   cursor: pointer;
   font-family: var(--ui-font);
-  font-size: 9px;
-  font-weight: 700;
-  backdrop-filter: blur(8px);
+  font-size: 11.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  transition: border-color 120ms ease, background 120ms ease, color 120ms ease, box-shadow 120ms ease;
 }
 
 .pdf-reset-zoom-button:hover,
@@ -2176,9 +2231,10 @@ body.resizing-panels iframe {
 .pdf-annotate-button:focus-visible,
 .pdf-send-annotations-button:hover,
 .pdf-send-annotations-button:focus-visible {
-  border-color: rgba(23, 107, 90, 0.55);
-  background: white;
-  box-shadow: 0 2px 12px rgba(25, 73, 58, 0.2);
+  border-color: rgba(23, 107, 90, 0.48);
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+  box-shadow: 0 2px 8px rgba(25, 73, 58, 0.1);
 }
 
 .pdf-reset-zoom-button:disabled,
@@ -2186,7 +2242,7 @@ body.resizing-panels iframe {
 .pdf-annotate-button:disabled,
 .pdf-send-annotations-button:disabled {
   cursor: default;
-  opacity: 0.46;
+  opacity: 0.42;
 }
 
 .pdf-download-button[data-loading="true"] > span:first-child {
@@ -2194,19 +2250,19 @@ body.resizing-panels iframe {
 }
 
 .pdf-annotate-button.active {
-  border-color: rgba(23, 107, 90, 0.7);
-  background: #dff2eb;
+  border-color: var(--accent);
+  background: var(--accent-soft);
   color: var(--accent-ink);
-  box-shadow: 0 0 0 2px rgba(23, 107, 90, 0.12);
+  box-shadow: 0 0 0 2px rgba(23, 107, 90, 0.14);
 }
 
 .pdf-annotation-panel {
   position: absolute;
   z-index: 5;
-  right: 14px;
-  bottom: 42px;
-  width: min(300px, calc(100% - 28px));
-  max-height: min(52%, 360px);
+  top: 46px;
+  right: 12px;
+  width: min(300px, calc(100% - 24px));
+  max-height: min(56%, 380px);
   display: flex;
   flex-direction: column;
   gap: 7px;
@@ -2214,7 +2270,7 @@ body.resizing-panels iframe {
   overflow: auto;
   border: 1px solid var(--line-strong);
   border-radius: 12px;
-  background: color-mix(in srgb, var(--panel) 94%, transparent);
+  background: color-mix(in srgb, var(--panel) 96%, transparent);
   box-shadow: 0 10px 28px rgba(20, 42, 35, 0.18);
   backdrop-filter: blur(12px);
 }
@@ -2334,20 +2390,22 @@ body.resizing-panels iframe {
 }
 
 .pdf-sync-hint kbd {
-  padding: 1px 4px;
-  border: 1px solid #c9d7d2;
+  margin-left: 0;
+  padding: 1px 5px;
+  border: 1px solid var(--line-strong);
   border-bottom-width: 2px;
-  border-radius: 999px;
-  background: white;
+  border-radius: 5px;
+  background: var(--panel);
   color: var(--accent-ink);
   font-family: var(--code-font);
-  font-size: 8px;
-  font-weight: 700;
-  line-height: 1.1;
+  font-size: 10px;
+  font-weight: 650;
+  line-height: 1.25;
+  opacity: 1;
   text-align: center;
 }
 
-#pdfPreview[hidden] + .pdf-preview-controls {
+#pdfPanel:has(#pdfPreview[hidden]) .pdf-preview-controls {
   display: none;
 }
 
@@ -2359,7 +2417,7 @@ body.resizing-panels iframe {
   background: transparent;
   color: var(--muted);
   cursor: pointer;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
 }
 
@@ -2378,7 +2436,8 @@ body.resizing-panels iframe {
 }
 
 .compile-time {
-  max-width: min(28vw, 280px);
+  min-width: 0;
+  max-width: min(24vw, 220px);
   overflow: hidden;
   color: var(--muted);
   font-size: 11px;
@@ -2394,15 +2453,17 @@ body.resizing-panels iframe {
 
 .preview-content {
   position: relative;
-  display: grid;
-  place-items: center;
+  display: flex;
+  flex-direction: column;
   padding: 0;
   overflow: hidden;
 }
 
 #pdfPreview {
-  position: absolute;
-  inset: 0;
+  position: relative;
+  flex: 1;
+  width: 100%;
+  min-height: 0;
   display: block;
   overflow: auto;
   padding: 16px;
@@ -2612,6 +2673,8 @@ body.resizing-panels iframe {
 
 .empty-state {
   max-width: 260px;
+  margin: auto;
+  padding: 24px 16px;
   color: var(--muted);
   text-align: center;
 }
@@ -2661,7 +2724,7 @@ body.resizing-panels iframe {
 
 .log-panel {
   overflow: auto;
-  padding: 51px 14px 14px;
+  padding: 14px;
   background: #17221f;
   color: #d5dde5;
 }
@@ -4326,9 +4389,21 @@ body.resizing-panels iframe {
   .main-document-control select {
     max-width: 118px;
   }
+
+  .pdf-sync-hint {
+    display: none;
+  }
+
+  .pdf-preview-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
 }
 
 @container (max-width: 360px) {
+  .preview-heading-meta .pdf-page-indicator:not([hidden]) + .compile-time {
+    display: none;
+  }
   .editor-findbar {
     gap: 4px;
     padding-inline: 5px;
@@ -4836,9 +4911,13 @@ html[data-theme="dark"] .preview-pane {
 }
 
 html[data-theme="dark"] .preview-heading {
-  border-color: rgba(64, 81, 88, 0.92);
-  background: rgba(24, 33, 37, 0.94);
-  box-shadow: 0 5px 18px rgba(0, 0, 0, 0.3);
+  border-color: var(--line);
+  background: linear-gradient(180deg, #1b2529, #182125);
+}
+
+html[data-theme="dark"] .pdf-preview-controls {
+  border-color: var(--line);
+  background: #1c262a;
 }
 
 html[data-theme="dark"] .codex-panel {
@@ -5131,27 +5210,22 @@ html[data-theme="dark"] .codex-permission-picker option {
 }
 
 html[data-theme="dark"] .pdf-sync-hint {
-  border-color: rgba(67, 88, 82, 0.86);
-  background: rgba(24, 35, 37, 0.84);
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.24);
-  color: #bdccc7;
+  color: var(--muted);
 }
 
 html[data-theme="dark"] .pdf-page-indicator {
-  border-color: rgba(67, 88, 82, 0.86);
-  background: rgba(24, 35, 37, 0.88);
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.24);
-  color: #c9d8d3;
+  border-color: #3a6457;
+  background: var(--accent-soft);
+  color: var(--accent-ink);
 }
 
 html[data-theme="dark"] .pdf-reset-zoom-button,
 html[data-theme="dark"] .pdf-download-button,
-html[data-theme="dark"] .pdf-annotate-button,
-html[data-theme="dark"] .pdf-send-annotations-button {
-  border-color: rgba(70, 105, 94, 0.92);
-  background: rgba(30, 48, 43, 0.94);
-  color: #9ddbc7;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.28);
+html[data-theme="dark"] .pdf-annotate-button {
+  border-color: var(--line-strong);
+  background: var(--panel);
+  color: var(--ink);
+  box-shadow: none;
 }
 
 html[data-theme="dark"] .pdf-reset-zoom-button:hover,
@@ -5161,7 +5235,8 @@ html[data-theme="dark"] .pdf-download-button:focus-visible,
 html[data-theme="dark"] .pdf-annotate-button:hover,
 html[data-theme="dark"] .pdf-annotate-button:focus-visible {
   border-color: #57917e;
-  background: #263b35;
+  background: var(--accent-soft);
+  color: var(--accent-ink);
 }
 
 html[data-theme="dark"] .pdf-annotate-button.active {
@@ -5270,4 +5345,19 @@ html[data-theme="dark"] .toast {
 html[data-theme="dark"] .toast.error {
   background: var(--danger);
   color: white;
+}
+
+html[data-theme="dark"] .home-drop-overlay {
+  border-color: #4f9d87;
+  background: rgba(16, 25, 28, 0.82);
+}
+
+html[data-theme="dark"] .home-drop-card {
+  border-color: #385e52;
+  background: rgba(24, 36, 39, 0.96);
+}
+
+html[data-theme="dark"] .sidebar.is-drop-target {
+  outline-color: #4f9d87;
+  background: rgba(31, 56, 49, 0.55);
 }

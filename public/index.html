@@ -38,12 +38,14 @@
         <section class="project-overview" aria-labelledby="projectOverviewTitle">
           <div class="project-overview-copy">
             <h2 id="projectOverviewTitle">项目</h2>
-            <p>继续最近的写作，或打开电脑中的 LaTeX 项目。</p>
+            <p>继续最近的写作，打开本地文件夹，或直接将 <code>.zip</code> 论文压缩包拖入页面。</p>
           </div>
           <div class="project-actions" id="hostProjectActions">
             <button class="button primary" id="openFolderButton" type="button"><span aria-hidden="true">＋</span> 打开项目文件夹</button>
+            <button class="button secondary" id="importZipButton" type="button">导入 .zip</button>
             <button class="button secondary" id="openTexButton" type="button">打开 .tex 文件</button>
             <button class="button ghost" id="addPathButton" type="button">输入本地路径</button>
+            <input id="importZipInput" type="file" accept=".zip,application/zip,application/x-zip-compressed" hidden>
           </div>
         </section>
 
@@ -63,6 +65,13 @@
           <div id="projectList" class="project-list"></div>
         </section>
       </main>
+    </div>
+    <div class="home-drop-overlay" id="homeDropOverlay" hidden aria-hidden="true">
+      <div class="home-drop-card">
+        <div class="home-drop-icon">ZIP</div>
+        <strong>释放 .zip 压缩包以导入项目</strong>
+        <p>自动解压至本机 workspace 目录并打开主 .tex 文档</p>
+      </div>
     </div>
   </section>
 
@@ -84,7 +93,7 @@
           <span id="collaborationLabel">仅本机</span>
         </button>
         <span class="status-pill" id="compilerStatus">检测编译器…</span>
-        <button class="button primary" id="compileButton" type="button">保存并编译 <kbd>Ctrl S</kbd></button>
+        <button class="button primary" id="compileButton" type="button">保存并编译 <kbd>⌘S</kbd></button>
       </div>
     </header>
 
@@ -167,7 +176,7 @@
               class="view-control source-sync-control"
               id="sourceToPdfButton"
               type="button"
-              title="定位光标在 PDF 中的位置（Ctrl+Alt+J）"
+              title="定位光标在 PDF 中的位置（⌘⌥J）"
               disabled
             ><span aria-hidden="true">→</span><span class="view-control-label">源码 → PDF</span></button>
             <span class="status-separator" aria-hidden="true"></span>
@@ -176,7 +185,7 @@
               id="wrapButton"
               type="button"
               aria-pressed="false"
-              title="切换自动换行（Alt+Z）"
+              title="切换自动换行（⌥Z）"
             ><span aria-hidden="true">↵</span><span class="view-control-label">自动换行</span></button>
             <span class="status-separator" aria-hidden="true"></span>
             <div class="font-size-control" role="group" aria-label="编辑器字号">
@@ -206,40 +215,42 @@
             <button class="tab" id="logTab" type="button" role="tab" aria-selected="false">编译日志</button>
           </div>
           <div class="preview-heading-meta">
+            <div class="pdf-page-indicator" id="pdfPageIndicator" title="当前 PDF 页码" hidden>第 1 / 1 页</div>
             <span id="compileTime" class="compile-time">尚未编译</span>
           </div>
         </div>
 
         <div id="pdfPanel" class="preview-content" role="tabpanel">
+          <div class="pdf-preview-controls" id="pdfPreviewControls" hidden>
+            <div class="pdf-sync-hint" id="pdfSyncHint" aria-label="源码与 PDF 双向定位提示" title="按住 ⌥ (Option) 单击源码或 PDF 可双向定位">
+              <kbd>⌥+单击</kbd>
+              <span>源码 ⇄ PDF</span>
+            </div>
+            <div class="pdf-preview-actions">
+              <button class="pdf-reset-zoom-button" id="pdfResetZoomButton" type="button" title="恢复为铺满宽度并保留当前位置" disabled>
+                <span aria-hidden="true">↺</span>
+                <span>恢复缩放</span>
+              </button>
+              <button class="pdf-annotate-button" id="pdfAnnotateButton" type="button" title="在 PDF 上拖出需要修改的区域" disabled>
+                <span aria-hidden="true">▧</span>
+                <span>标注 PDF</span>
+              </button>
+              <button class="pdf-download-button" id="pdfDownloadButton" type="button" title="下载当前预览的 PDF" disabled>
+                <span aria-hidden="true">↓</span>
+                <span>下载 PDF</span>
+              </button>
+            </div>
+          </div>
           <div id="previewEmpty" class="empty-state">
             <div class="paper-illustration" aria-hidden="true">
               <span></span><span></span><span></span><span></span>
             </div>
             <strong>准备好开始写作</strong>
-            <p>选择编译对象，按 Ctrl+S 保存并编译。</p>
+            <p>选择编译对象，按 ⌘S 保存并编译。</p>
           </div>
-          <div id="pdfPreview" class="pdf-preview-scroll" title="左键选择文字；右键拖动平移；Alt+单击定位源码" role="document" tabindex="0" hidden>
+          <div id="pdfPreview" class="pdf-preview-scroll" title="左键选择文字；右键拖动平移；⌥+单击定位源码" role="document" tabindex="0" hidden>
             <div id="pdfPages" class="pdf-pages"></div>
             <div id="pdfRenderStatus" class="pdf-render-status" hidden></div>
-          </div>
-          <div class="pdf-preview-controls" id="pdfPreviewControls">
-            <div class="pdf-page-indicator" id="pdfPageIndicator" title="当前 PDF 页码" hidden>第 1 / 1 页</div>
-            <div class="pdf-sync-hint" id="pdfSyncHint" aria-label="源码与 PDF 双向定位提示">
-              <kbd>Alt+单击</kbd>
-              <span>源码 ⇄ PDF</span>
-            </div>
-            <button class="pdf-reset-zoom-button" id="pdfResetZoomButton" type="button" title="恢复为铺满宽度并保留当前位置" disabled>
-              <span aria-hidden="true">↺</span>
-              <span>恢复缩放</span>
-            </button>
-            <button class="pdf-annotate-button" id="pdfAnnotateButton" type="button" title="在 PDF 上拖出需要修改的区域" disabled>
-              <span aria-hidden="true">▧</span>
-              <span>标注 PDF</span>
-            </button>
-            <button class="pdf-download-button" id="pdfDownloadButton" type="button" title="下载当前预览的 PDF" disabled>
-              <span aria-hidden="true">↓</span>
-              <span>下载 PDF</span>
-            </button>
           </div>
           <section class="pdf-annotation-panel" id="pdfAnnotationPanel" hidden aria-label="PDF 标注">
             <div class="pdf-annotation-heading">
@@ -398,7 +409,7 @@
         </form>
       </aside>
 
-      <button class="codex-edge-button" id="codexExpandButton" type="button" aria-controls="codexPanel" aria-expanded="false" title="展开 Codex 助手（Ctrl+Alt+C）" hidden>
+      <button class="codex-edge-button" id="codexExpandButton" type="button" aria-controls="codexPanel" aria-expanded="false" title="展开 Codex 助手（⌃⌥C）" hidden>
         <span aria-hidden="true">✦</span>
         <span>Codex</span>
       </button>
@@ -457,7 +468,7 @@
 
       <div class="share-start-guide" id="shareStartGuide" hidden>
         <strong>当前启动方式不支持动态分享</strong>
-        <p>请停止当前调试服务，再双击 <code>LocalTeX.vbs</code>；它会静默启动隐藏的主机控制器，不会留下常驻 CMD 窗口。</p>
+        <p>请停止当前调试服务，再双击打开 <code>LocalTeX.app</code>（或运行 <code>./launch-localtex.sh</code>）；它会静默启动后台主机控制器，不会留下常驻终端窗口。</p>
       </div>
 
       <label class="collaborator-name-field" for="collaboratorNameInput">

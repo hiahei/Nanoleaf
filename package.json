@@ -6,7 +6,7 @@
   "scripts": {
     "build:collaboration": "node scripts/build-collaboration.mjs",
     "start": "node server.js",
-    "check": "node --check server.js && node --check codex-app-server.js && node --check codex-service.js && node --check public/app.js",
+    "check": "node --check server.js && node --check runtime-env.js && node --check synctex-fallback.js && node --check zip-import.js && node --check codex-app-server.js && node --check codex-service.js && node --check public/app.js",
     "test": "node --test"
   },
   "engines": {

@@ -4,6 +4,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { randomUUID } = require('node:crypto');
 const { createCodexAppServerClient } = require('./codex-app-server');
+const { buildRuntimeEnv } = require('./runtime-env');
 
 const MAX_USER_PROMPT = 12_000;
 const MAX_SELECTION = 40_000;
@@ -453,7 +454,13 @@ class CodexService {
 
   async client() {
     if (!this.clientPromise) {
-      this.clientPromise = import('@openai/codex-sdk').then(({ Codex }) => new Codex());
+      this.clientPromise = import('@openai/codex-sdk').then(({ Codex }) => {
+        const rawEnv = buildRuntimeEnv(process.env, {}, __dirname);
+        const env = Object.fromEntries(
+          Object.entries(rawEnv).filter(([, value]) => typeof value === 'string'),
+        );
+        return new Codex({ env });
+      });
     }
     return this.clientPromise;
   }

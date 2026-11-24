@@ -1,6 +1,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { spawn } = require('node:child_process');
+const { buildRuntimeEnv } = require('./runtime-env');
 
 const REQUEST_TIMEOUT_MS = 30_000;
 const NOTIFICATION_TIMEOUT_MS = 120_000;
@@ -57,7 +58,7 @@ class CodexAppServerClient {
     this.stderrBuffer = '';
     const child = spawn(process.execPath, [cliScript, 'app-server'], {
       cwd: __dirname,
-      env: { ...process.env },
+      env: buildRuntimeEnv(process.env, {}, __dirname),
       stdio: ['pipe', 'pipe', 'pipe'],
       windowsHide: true,
     });

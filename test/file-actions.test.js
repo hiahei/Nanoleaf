@@ -99,8 +99,9 @@ test('context menu and tree-only shortcuts dispatch the target file', async () =
   menu.children[0].handlers.click();
   assert.equal(menu.hidden, true);
   handlers.get('keydown')({ ...event, key: 'Delete' });
+  handlers.get('keydown')({ ...event, key: 'Backspace', metaKey: true });
   handlers.get('keydown')({ ...event, key: 'F2' });
   handlers.get('keydown')({ ...event, key: 'Delete', repeat: true });
   handlers.get('keydown')({ ...event, key: 'Delete', ctrlKey: true });
-  assert.deepEqual(selected, [['create', row.dataset.path], ['delete', row.dataset.path], ['rename', row.dataset.path]]);
+  assert.deepEqual(selected, [['create', row.dataset.path], ['delete', row.dataset.path], ['delete', row.dataset.path], ['rename', row.dataset.path]]);
 });
