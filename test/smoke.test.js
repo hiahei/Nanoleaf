@@ -223,6 +223,9 @@ test('serves the editor and local configuration', async () => {
   assert.doesNotMatch(page, /id="codexLauncher"/);
   assert.doesNotMatch(page, /id="codexTab"/);
   assert.match(page, /id="codexPrompt"/);
+  assert.match(page, /id="codexAttachButton"/);
+  assert.match(page, /id="codexAttachmentInput"/);
+  assert.match(page, /id="codexAttachments"/);
   assert.match(page, /id="codexConversationRefreshButton"/);
   assert.match(page, />刷新对话</);
   assert.ok(page.indexOf('id="codexConversationRefreshButton"') < page.indexOf('id="codexPrompt"'));
@@ -246,6 +249,12 @@ test('serves the editor and local configuration', async () => {
   assert.match(appScript, /async function previewPdfFile\(file\)/);
   assert.match(appScript, /loadPdfPreview\(pdfUrl, '', file\.path\)/);
   assert.match(appScript, /async function sendCodexPrompt\(/);
+  assert.match(appScript, /async function addCodexImages\(/);
+  assert.match(appScript, /api\('\/api\/codex\/attachments'/);
+  assert.match(appScript, /attachments: codexState\.attachments\.map/);
+  assert.match(appScript, /application\/x-nanoleaf-file/);
+  assert.match(appScript, /api\('\/api\/file\/move'/);
+  assert.match(appScript, /function renderCodexMessageAttachments\(/);
   assert.match(appScript, /function setPdfAnnotationMode\(/);
   assert.match(appScript, /event\.key === 'Escape' && pdfAnnotationState\.active/);
   assert.match(appScript, /cancelPdfAnnotationDrag\(\);/);
@@ -351,6 +360,9 @@ test('serves the editor and local configuration', async () => {
   assert.match(script, /project-open-area/);
   assert.doesNotMatch(script, /open\.textContent = '打开'/);
   assert.match(script, /nanoleaf\.editor-view\.v1/);
+  assert.match(script, /const fallback = \{ fontSize: 14, wrap: true \}/);
+  assert.match(script, /typeof value\?\.wrap === 'boolean'/);
+  assert.match(script, /codeEditor\.session\.setUseWrapMode\(editorView\.wrap\)/);
   assert.match(script, /nanoleaf\.theme\.v1/);
   assert.match(script, /codeEditor\.setTheme\('ace\/theme\/textmate'\)/);
   assert.doesNotMatch(script, /ace\/theme\/github_dark/);
@@ -470,6 +482,8 @@ test('serves the editor and local configuration', async () => {
   assert.match(styles, /\.tree-compile-target/);
   assert.match(styles, /\.file-tree\.file-drop-active/);
   assert.match(styles, /\.tree-row\.drop-target/);
+  assert.match(styles, /\.file-tree\.file-move-active/);
+  assert.match(styles, /\.tree-row\.move-target/);
   assert.match(styles, /\.pdf-sync-marker/);
   assert.match(styles, /#pdfPreview\[hidden\] \+ \.pdf-preview-controls/);
   assert.match(styles, /\.pdf-reset-zoom-button/);
@@ -522,6 +536,8 @@ test('serves the editor and local configuration', async () => {
   assert.match(styles, /#codexPrompt\s*\{[\s\S]{0,240}padding: 9px 10px/);
   assert.match(styles, /@keyframes codex-refresh-spin/);
   assert.match(styles, /\.codex-turn-divider\s*\{/);
+  assert.match(styles, /\.codex-attachments\s*\{/);
+  assert.match(styles, /\.codex-message-attachments\s*\{/);
   assert.match(styles, /linear-gradient\(90deg, transparent, var\(--line-strong\)/);
   assert.match(styles, /\.codex-message-body pre\[data-language\]/);
   assert.match(styles, /\.codex-message\.activity\.failed \.codex-message-body/);
@@ -1184,6 +1200,41 @@ test('writes browser saves directly to the local project file', async () => {
   });
   assert.equal(saveResponse.status, 200);
   assert.equal(fs.readFileSync(path.join(testWorkspace, 'disk-sync.tex'), 'utf8'), content);
+});
+
+test('stores temporary Codex image attachments and moves workspace files', async () => {
+  const sourceDirectory = path.join(testWorkspace, 'move-source');
+  const targetDirectory = path.join(testWorkspace, 'move-target');
+  fs.mkdirSync(sourceDirectory, { recursive: true });
+  fs.mkdirSync(targetDirectory, { recursive: true });
+  fs.writeFileSync(path.join(sourceDirectory, 'move.tex'), 'move me\n', 'utf8');
+
+  const attachmentResponse = await fetch(`${baseUrl}/api/codex/attachments`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      name: 'formula.png',
+      mimeType: 'image/png',
+      data: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+    }),
+  });
+  assert.equal(attachmentResponse.status, 201);
+  const attachment = (await attachmentResponse.json()).attachment;
+  assert.match(attachment.id, /^[0-9a-f-]{36}$/);
+  const attachmentDeleteResponse = await fetch(
+    `${baseUrl}/api/codex/attachments/${encodeURIComponent(attachment.id)}`,
+    { method: 'DELETE' },
+  );
+  assert.equal(attachmentDeleteResponse.status, 200);
+
+  const moveResponse = await fetch(`${baseUrl}/api/file/move`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ from: 'move-source/move.tex', targetDirectory: 'move-target' }),
+  });
+  assert.equal(moveResponse.status, 200);
+  assert.equal(fs.existsSync(path.join(targetDirectory, 'move.tex')), true);
+  assert.equal(fs.existsSync(path.join(sourceDirectory, 'move.tex')), false);
 });
 
 test('provides a persistent local project list', async () => {

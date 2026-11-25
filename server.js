@@ -100,7 +100,9 @@ let collaborationServer = null;
 let serviceSettings = null;
 let profileSettings = null;
 let codexSettings = null;
-const codexService = createCodexService();
+const codexService = createCodexService({
+  attachmentRoot: path.join(DATA_ROOT, 'codex-attachments'),
+});
 
 function isLoopbackAddress(address = '') {
   const normalized = String(address).toLowerCase();
@@ -1150,6 +1152,21 @@ async function handleApi(request, response, url) {
       }
     }
 
+    if (request.method === 'POST' && url.pathname === '/api/codex/attachments') {
+      const body = await readJsonBody(request);
+      try {
+        return sendJson(response, 201, { attachment: await codexService.storeAttachment(body) });
+      } catch (error) {
+        return sendJson(response, 400, { error: error.message || '图片附件无效。' });
+      }
+    }
+
+    const attachmentMatch = url.pathname.match(/^\/api\/codex\/attachments\/([^/]+)$/);
+    if (request.method === 'DELETE' && attachmentMatch) {
+      await codexService.releaseAttachments([decodeURIComponent(attachmentMatch[1])]);
+      return sendJson(response, 200, { ok: true });
+    }
+
     if (request.method === 'GET' && url.pathname === '/api/codex/threads') {
       try {
         const result = await codexService.listThreads({
@@ -1356,6 +1373,27 @@ async function handleApi(request, response, url) {
     await fsp.rename(resolveInside(workspaceRoot, from), resolveInside(workspaceRoot, to));
     return sendJson(response, 200, { ok: true, path: to });
   }
+
+    if (request.method === 'POST' && url.pathname === '/api/file/move') {
+      const body = await readJsonBody(request);
+      const from = normalizeRelative(body.from);
+      const targetDirectory = normalizeRelative(body.targetDirectory || '');
+      if (!from) return sendJson(response, 400, { error: 'A source path is required.' });
+      const sourcePath = resolveInside(workspaceRoot, from);
+      const sourceStat = await fsp.stat(sourcePath).catch(() => null);
+      if (!sourceStat) return sendJson(response, 404, { error: 'The source file or folder does not exist.' });
+      const destination = normalizeRelative(path.join(targetDirectory, path.basename(from)));
+      const destinationPath = resolveInside(workspaceRoot, destination);
+      if (destination === from) return sendJson(response, 200, { ok: true, path: destination });
+      if (sourceStat.isDirectory() && (destination === from || destination.startsWith(`${from}/`))) {
+        return sendJson(response, 400, { error: 'A folder cannot be moved into itself.' });
+      }
+      if (fs.existsSync(destinationPath)) {
+        return sendJson(response, 409, { error: 'A file or folder with the same name already exists there.' });
+      }
+      await fsp.rename(sourcePath, destinationPath);
+      return sendJson(response, 200, { ok: true, path: destination });
+    }
 
   if (request.method === 'DELETE' && url.pathname === '/api/file') {
     const relativePath = normalizeRelative(url.searchParams.get('path'));
@@ -1603,6 +1641,7 @@ async function createAppServer() {
   await loadServiceSettings();
   await loadProfileSettings();
   await loadCodexSettings();
+  await codexService.resetAttachments();
   const server = http.createServer(requestHandler);
   const collaboration = attachCollaborationServer(server, {
     authenticate: (request, url) => isWorkServiceActive() && isAuthorizedRequest(request, url),

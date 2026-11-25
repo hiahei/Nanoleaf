@@ -16,7 +16,31 @@ const MAX_THREAD_NAME = 120;
 const MAX_MODEL_ID = 160;
 const THREAD_TURN_PAGE_SIZE = 50;
 const MAX_THREAD_TURNS = 200;
+const MAX_CODEX_ATTACHMENTS = 4;
+const MAX_CODEX_ATTACHMENT_BYTES = 8 * 1024 * 1024;
+const CODEX_ATTACHMENT_TTL = 2 * 60 * 60 * 1000;
 const reasoningEfforts = new Set(['minimal', 'low', 'medium', 'high', 'xhigh']);
+const codexAttachmentTypes = new Map([
+  ['image/png', '.png'],
+  ['image/jpeg', '.jpg'],
+  ['image/webp', '.webp'],
+  ['image/gif', '.gif'],
+]);
+
+function validCodexImageBuffer(mimeType, buffer) {
+  if (mimeType === 'image/png') {
+    return buffer.length >= 8
+      && buffer.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
+  }
+  if (mimeType === 'image/jpeg') return buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff;
+  if (mimeType === 'image/gif') return buffer.length >= 6 && ['GIF87a', 'GIF89a'].includes(buffer.subarray(0, 6).toString('ascii'));
+  if (mimeType === 'image/webp') {
+    return buffer.length >= 12
+      && buffer.subarray(0, 4).toString('ascii') === 'RIFF'
+      && buffer.subarray(8, 12).toString('ascii') === 'WEBP';
+  }
+  return false;
+}
 const visibleThreadSourceKinds = Object.freeze([
   'cli',
   'vscode',
@@ -383,6 +407,82 @@ class CodexService {
     this.jobs = new Map();
     this.projectThreads = new Map();
     this.runningProjects = new Map();
+    this.attachmentRoot = path.resolve(options.attachmentRoot || path.join(__dirname, 'data', 'codex-attachments'));
+    this.attachments = new Map();
+  }
+
+  async cleanupAttachments() {
+    const entries = await fsp.readdir(this.attachmentRoot, { withFileTypes: true }).catch(() => []);
+    const cutoff = Date.now() - CODEX_ATTACHMENT_TTL;
+    for (const entry of entries) {
+      if (!entry.isFile()) continue;
+      const filePath = path.join(this.attachmentRoot, entry.name);
+      const stat = await fsp.stat(filePath).catch(() => null);
+      const active = [...this.attachments.values()].includes(filePath);
+      if (stat && !active && stat.mtimeMs < cutoff) {
+        await fsp.rm(filePath, { force: true }).catch(() => {});
+        for (const [id, attachedPath] of this.attachments) {
+          if (attachedPath === filePath) this.attachments.delete(id);
+        }
+      }
+    }
+  }
+
+  async resetAttachments() {
+    await fsp.rm(this.attachmentRoot, { recursive: true, force: true });
+    await fsp.mkdir(this.attachmentRoot, { recursive: true });
+    this.attachments.clear();
+  }
+
+  async storeAttachment(input = {}) {
+    const mimeType = String(input.mimeType || '').toLowerCase().trim();
+    const extension = codexAttachmentTypes.get(mimeType);
+    if (!extension) throw new Error('仅支持 PNG、JPG、WEBP 或 GIF 图片。');
+    let encoded = String(input.data || '').trim();
+    const dataUrlPrefix = `data:${mimeType};base64,`;
+    if (encoded.startsWith(dataUrlPrefix)) encoded = encoded.slice(dataUrlPrefix.length);
+    if (!encoded || !/^[A-Za-z0-9+/]*={0,2}$/.test(encoded)) {
+      throw new Error('图片数据格式无效。');
+    }
+    const buffer = Buffer.from(encoded, 'base64');
+    if (!buffer.length || buffer.length > MAX_CODEX_ATTACHMENT_BYTES) {
+      throw new Error('单张图片不能超过 8 MB。');
+    }
+    if (!validCodexImageBuffer(mimeType, buffer)) throw new Error('图片内容与文件格式不匹配。');
+
+    await this.cleanupAttachments();
+    await fsp.mkdir(this.attachmentRoot, { recursive: true });
+    const id = randomUUID();
+    const filePath = path.join(this.attachmentRoot, `${id}${extension}`);
+    await fsp.writeFile(filePath, buffer, { flag: 'wx' });
+    this.attachments.set(id, filePath);
+    return {
+      id,
+      name: String(input.name || `image${extension}`).replace(/[\\/:*?"<>|\r\n]/g, '_').slice(0, 160),
+      mimeType,
+      size: buffer.length,
+    };
+  }
+
+  async releaseAttachments(ids = []) {
+    for (const rawId of Array.isArray(ids) ? ids : []) {
+      const id = String(rawId || '').trim();
+      const filePath = this.attachments.get(id);
+      if (filePath) await fsp.rm(filePath, { force: true }).catch(() => {});
+      this.attachments.delete(id);
+    }
+  }
+
+  resolveAttachments(ids = []) {
+    const normalizedIds = Array.isArray(ids) ? ids.map((id) => String(id || '').trim()).filter(Boolean) : [];
+    if (normalizedIds.length > MAX_CODEX_ATTACHMENTS) {
+      throw new Error(`一次最多发送 ${MAX_CODEX_ATTACHMENTS} 张图片。`);
+    }
+    return normalizedIds.map((id) => {
+      const filePath = this.attachments.get(id);
+      if (!filePath || !fs.existsSync(filePath)) throw new Error('图片附件已过期，请重新选择。');
+      return filePath;
+    });
   }
 
   status(canUse = false) {
@@ -632,7 +732,12 @@ class CodexService {
       throw error;
     }
 
-    const prompt = boundedText(requestContext.prompt, MAX_USER_PROMPT).trim();
+    const attachmentIds = Array.isArray(requestContext.attachments)
+      ? requestContext.attachments.map((id) => String(id || '').trim()).filter(Boolean)
+      : [];
+    const attachmentPaths = this.resolveAttachments(attachmentIds);
+    const prompt = boundedText(requestContext.prompt, MAX_USER_PROMPT).trim()
+      || (attachmentPaths.length ? '请分析所附图片，并结合当前上下文给出具体建议。' : '');
     if (!prompt) throw new Error('请输入要交给 Codex 的任务。');
 
     const threadId = normalizedThreadId(requestContext.threadId);
@@ -687,6 +792,8 @@ class CodexService {
       abortController: new AbortController(),
       threadId,
       newThread: Boolean(requestContext.newThread),
+      attachmentIds,
+      attachmentPaths,
       permissions,
       model,
       reasoningEffort,
@@ -698,6 +805,7 @@ class CodexService {
         includesSelection: Boolean(context.selection),
         includesCurrentFile: Boolean(context.activeFileContent),
         includesCompileLog: Boolean(context.compileOutput),
+        attachments: attachmentPaths.length,
         permissionMode: permissions.mode,
         model: model || configuredModelId(),
         reasoningEffort: reasoningEffort || configuredReasoningEffort(),
@@ -737,7 +845,13 @@ class CodexService {
       }
       this.projectThreads.set(job.projectId, thread);
 
-      const { events } = await thread.runStreamed(job.prompt, { signal: job.abortController.signal });
+      const input = job.attachmentPaths.length
+        ? [
+            { type: 'text', text: job.prompt },
+            ...job.attachmentPaths.map((filePath) => ({ type: 'local_image', path: filePath })),
+          ]
+        : job.prompt;
+      const { events } = await thread.runStreamed(input, { signal: job.abortController.signal });
       for await (const event of events) {
         if (event.type === 'thread.started') {
           job.threadId = event.thread_id;
@@ -879,6 +993,7 @@ class CodexService {
           : null,
       });
     } finally {
+      await this.releaseAttachments(job.attachmentIds);
       if (this.runningProjects.get(job.projectId) === job.id) this.runningProjects.delete(job.projectId);
     }
   }

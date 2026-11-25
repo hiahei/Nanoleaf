@@ -64,6 +64,9 @@ const elements = {
   codexCompileLogContext: document.querySelector('#codexCompileLogContext'),
   codexCollapseButton: document.querySelector('#codexCollapseButton'),
   codexComposer: document.querySelector('#codexComposer'),
+  codexAttachButton: document.querySelector('#codexAttachButton'),
+  codexAttachmentInput: document.querySelector('#codexAttachmentInput'),
+  codexAttachments: document.querySelector('#codexAttachments'),
   codexConversationRefreshButton: document.querySelector('#codexConversationRefreshButton'),
   codexCurrentFileContext: document.querySelector('#codexCurrentFileContext'),
   codexCurrentFileLabel: document.querySelector('#codexCurrentFileLabel'),
@@ -271,6 +274,7 @@ const codexState = {
   models: [],
   modelsLoaded: false,
   modelsLoading: false,
+  attachments: [],
 };
 const CODEX_REASONING_EFFORTS = ['minimal', 'low', 'medium', 'high', 'xhigh'];
 const CODEX_REASONING_LABELS = Object.freeze({
@@ -540,11 +544,12 @@ function closeEditorFindbar(restoreFocus = true) {
 }
 
 function loadEditorView() {
-  const fallback = { fontSize: 14, wrap: false };
+  const fallback = { fontSize: 14, wrap: true };
   try {
     const value = JSON.parse(localStorage.getItem(EDITOR_VIEW_STORAGE_KEY));
     const fontSize = EDITOR_FONT_SIZES.includes(value?.fontSize) ? value.fontSize : fallback.fontSize;
-    return { fontSize, wrap: value?.wrap === true };
+    const wrap = typeof value?.wrap === 'boolean' ? value.wrap : fallback.wrap;
+    return { fontSize, wrap };
   } catch {
     return fallback;
   }
@@ -1848,6 +1853,7 @@ function pathIsWithin(filePath, target) {
 
 let closeFileContextMenu = () => {};
 let fileOperationRunning = false;
+let fileTreeDragPath = '';
 
 function fileTreeDropDirectory(event) {
   const row = event.target.closest?.('.tree-row');
@@ -1931,6 +1937,89 @@ async function performFileAction(action, file) {
     }
     focusFileRow(destination || parentDirectory(file.path));
     showToast(action === 'rename' ? `已重命名为 ${destination}` : `已删除 ${file.path}`);
+  } catch (error) {
+    if (affectsEditor && state.activePath === oldActivePath) {
+      const connected = await startDocumentCollaboration(oldActivePath);
+      if (!connected) codeEditor.setReadOnly(false);
+    }
+    showToast(error.message, true);
+  } finally {
+    fileOperationRunning = false;
+  }
+}
+
+function clearFileTreeDropState() {
+  fileTreeDragPath = '';
+  elements.fileTree.classList.remove('file-drop-active', 'file-move-active');
+  elements.fileTree.querySelectorAll('.drop-target, .move-target').forEach((row) => {
+    row.classList.remove('drop-target', 'move-target');
+  });
+}
+
+function isInternalFileDrag(event) {
+  return Boolean(event.dataTransfer?.types?.includes('application/x-nanoleaf-file'));
+}
+
+function internalFileDropPath(event) {
+  return String(event.dataTransfer?.getData('application/x-nanoleaf-file') || fileTreeDragPath).replaceAll('\\', '/');
+}
+
+function canMoveFileTo(sourcePath, targetDirectory) {
+  if (!sourcePath) return false;
+  if (targetDirectory === sourcePath) return false;
+  return !pathIsWithin(targetDirectory, sourcePath);
+}
+
+async function performFileMove(sourcePath, targetDirectory) {
+  if (fileOperationRunning || !state.activeProject) return;
+  const file = state.files.find((entry) => entry.path === sourcePath);
+  if (!file) return;
+  const normalizedDirectory = String(targetDirectory || '').replaceAll('\\', '/').replace(/^\/+|\/+$/g, '');
+  if (!canMoveFileTo(file.path, normalizedDirectory)) {
+    showToast('不能把文件夹移动到自己的子文件夹中。', true);
+    return;
+  }
+  const sourceName = file.path.split('/').at(-1);
+  const destination = normalizedDirectory ? `${normalizedDirectory}/${sourceName}` : sourceName;
+  if (destination === file.path) return;
+  if (state.files.some((entry) => entry.path.toLowerCase() === destination.toLowerCase())) {
+    showToast('目标文件夹中已经存在同名文件或文件夹。', true);
+    return;
+  }
+
+  const affectsEditor = pathIsWithin(state.activePath, file.path);
+  const oldActivePath = state.activePath;
+  const oldMainDocument = state.mainDocument;
+  fileOperationRunning = true;
+  try {
+    if (affectsEditor) {
+      if (state.dirty && !await saveFile(true)) return;
+      stopDocumentCollaboration();
+      codeEditor.setReadOnly(true);
+    }
+    await api('/api/file/move', {
+      method: 'POST',
+      body: JSON.stringify({ from: file.path, targetDirectory: normalizedDirectory }),
+    });
+    const remap = (value) => pathIsWithin(value, file.path)
+      ? destination + value.slice(file.path.length)
+      : value;
+    state.collapsedFolders = new Set([...state.collapsedFolders].map(remap));
+    state.selectedPath = remap(state.selectedPath);
+    if (affectsEditor) resetEditorState();
+    expandFileParents(destination);
+    await refreshFiles();
+    if (pathIsWithin(oldMainDocument, file.path)) {
+      const nextMainDocument = remap(oldMainDocument);
+      state.mainDocument = oldMainDocument;
+      await setMainDocument(nextMainDocument);
+    }
+    if (affectsEditor) {
+      const nextFile = state.files.find((entry) => entry.path === remap(oldActivePath));
+      if (nextFile) await openFile(nextFile, true);
+    }
+    focusFileRow(destination);
+    showToast(`已移动到 ${destination}`);
   } catch (error) {
     if (affectsEditor && state.activePath === oldActivePath) {
       const connected = await startDocumentCollaboration(oldActivePath);
@@ -2028,7 +2117,24 @@ function initializeFileActions() {
     if (!menu.contains(event.target)) closeFileContextMenu();
   });
   elements.fileTree.addEventListener('scroll', () => closeFileContextMenu());
+  elements.fileTree.addEventListener('dragstart', (event) => {
+    const row = event.target.closest?.('.tree-row');
+    if (!row || !state.files.some((file) => file.path === row.dataset.path)) return;
+    fileTreeDragPath = row.dataset.path;
+    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData('application/x-nanoleaf-file', fileTreeDragPath);
+    row.classList.add('dragging');
+  });
+  elements.fileTree.addEventListener('dragend', (event) => {
+    event.target.closest?.('.tree-row')?.classList.remove('dragging');
+    clearFileTreeDropState();
+  });
   elements.fileTree.addEventListener('dragenter', (event) => {
+    if (isInternalFileDrag(event)) {
+      event.preventDefault();
+      elements.fileTree.classList.add('file-move-active');
+      return;
+    }
     if (!event.dataTransfer?.types?.includes('Files')) return;
     event.preventDefault();
     elements.fileTree.classList.add('file-drop-active');
@@ -2036,6 +2142,17 @@ function initializeFileActions() {
     row?.classList.add('drop-target');
   });
   elements.fileTree.addEventListener('dragover', (event) => {
+    if (isInternalFileDrag(event)) {
+      const sourcePath = internalFileDropPath(event);
+      const targetDirectory = fileTreeDropDirectory(event);
+      event.preventDefault();
+      elements.fileTree.classList.add('file-move-active');
+      elements.fileTree.querySelectorAll('.move-target').forEach((row) => row.classList.remove('move-target'));
+      const targetRow = event.target.closest?.('.tree-row');
+      if (targetRow && canMoveFileTo(sourcePath, targetDirectory)) targetRow.classList.add('move-target');
+      event.dataTransfer.dropEffect = canMoveFileTo(sourcePath, targetDirectory) ? 'move' : 'none';
+      return;
+    }
     if (!event.dataTransfer?.types?.includes('Files')) return;
     event.preventDefault();
     event.dataTransfer.dropEffect = 'copy';
@@ -2045,15 +2162,21 @@ function initializeFileActions() {
   });
   elements.fileTree.addEventListener('dragleave', (event) => {
     if (event.relatedTarget && elements.fileTree.contains(event.relatedTarget)) return;
-    elements.fileTree.classList.remove('file-drop-active');
-    elements.fileTree.querySelectorAll('.drop-target').forEach((row) => row.classList.remove('drop-target'));
+    clearFileTreeDropState();
   });
   elements.fileTree.addEventListener('drop', (event) => {
+    if (isInternalFileDrag(event)) {
+      event.preventDefault();
+      const sourcePath = internalFileDropPath(event);
+      const targetDirectory = fileTreeDropDirectory(event);
+      clearFileTreeDropState();
+      void performFileMove(sourcePath, targetDirectory);
+      return;
+    }
     if (!event.dataTransfer?.files?.length) return;
     event.preventDefault();
     const directory = fileTreeDropDirectory(event);
-    elements.fileTree.classList.remove('file-drop-active');
-    elements.fileTree.querySelectorAll('.drop-target').forEach((row) => row.classList.remove('drop-target'));
+    clearFileTreeDropState();
     void uploadFiles(event.dataTransfer.files, directory, false);
   });
   window.addEventListener('resize', () => closeFileContextMenu());
@@ -2103,6 +2226,7 @@ function renderFileTree() {
       row.classList.toggle('active', file.path === state.activePath);
       row.classList.toggle('compile-target', isCompileTarget);
       row.dataset.path = file.path;
+      row.draggable = true;
       row.setAttribute('role', 'treeitem');
       row.setAttribute('aria-level', String(level));
       row.title = isCompileTarget ? `编译对象 · ${file.path}` : file.path;
@@ -2287,7 +2411,9 @@ async function refreshWorkspace() {
 
 async function confirmDiscard() {
   if (!state.dirty) return true;
-  return window.confirm('当前文件还有未保存修改。确定放弃这些修改吗？');
+  // File navigation keeps the user's edits by saving them before switching.
+  // There is no discard prompt when changing pages or projects.
+  return saveFile(true);
 }
 
 async function openFile(file, force = false, revealInTree = true, selectForCompile = false) {
@@ -2383,6 +2509,7 @@ function updateCodexAvailability(config = state.config?.codex) {
   renderCodexReasoningOptions(config);
   elements.codexModelSelect.disabled = !available || codexState.running || codexState.modelsLoading;
   elements.codexReasoningSelect.disabled = !available || codexState.running || codexState.modelsLoading;
+  elements.codexAttachButton.disabled = !available || codexState.running;
   elements.codexPermissionSelect.value = permissionMode;
   elements.codexPermissionSelect.disabled = !available || codexState.running;
   elements.codexPermissionPicker.dataset.mode = permissionMode;
@@ -2624,6 +2751,143 @@ function updateCodexContext() {
   if (!codexState.compileLogAvailable || !usesCurrentProject) elements.codexCompileLogContext.checked = false;
 }
 
+const CODEX_IMAGE_MAX_BYTES = 8 * 1024 * 1024;
+const CODEX_IMAGE_MAX_COUNT = 4;
+const CODEX_IMAGE_MIME_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif']);
+
+function codexImageMime(file) {
+  const direct = String(file?.type || '').toLowerCase();
+  if (CODEX_IMAGE_MIME_TYPES.has(direct)) return direct;
+  const extension = String(file?.name || '').split('.').pop().toLowerCase();
+  return ({ png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp', gif: 'image/gif' })[extension] || '';
+}
+
+function formatCodexAttachmentSize(size) {
+  const bytes = Number(size) || 0;
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function renderCodexAttachments() {
+  const container = elements.codexAttachments;
+  if (!container) return;
+  container.replaceChildren();
+  container.hidden = codexState.attachments.length === 0;
+  for (const attachment of codexState.attachments) {
+    const item = document.createElement('div');
+    item.className = 'codex-attachment';
+
+    const image = document.createElement('img');
+    image.src = attachment.previewUrl;
+    image.alt = attachment.name;
+
+    const details = document.createElement('span');
+    details.className = 'codex-attachment-details';
+    const name = document.createElement('strong');
+    name.textContent = attachment.name;
+    const size = document.createElement('small');
+    size.textContent = formatCodexAttachmentSize(attachment.size);
+    details.append(name, size);
+
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'codex-attachment-remove';
+    remove.title = `移除 ${attachment.name}`;
+    remove.setAttribute('aria-label', `移除 ${attachment.name}`);
+    remove.textContent = '×';
+    remove.addEventListener('click', () => {
+      void removeCodexAttachment(attachment.id);
+    });
+    item.append(image, details, remove);
+    container.append(item);
+  }
+}
+
+function renderCodexMessageAttachments(body, attachments = []) {
+  if (!attachments.length) return;
+  const gallery = document.createElement('div');
+  gallery.className = 'codex-message-attachments';
+  for (const attachment of attachments) {
+    const image = document.createElement('img');
+    image.src = attachment.previewUrl;
+    image.alt = attachment.name || '图片附件';
+    image.title = attachment.name || '图片附件';
+    gallery.append(image);
+  }
+  body.append(gallery);
+}
+
+async function removeCodexAttachment(attachmentId) {
+  const attachment = codexState.attachments.find((item) => item.id === attachmentId);
+  if (!attachment) return;
+  codexState.attachments = codexState.attachments.filter((item) => item.id !== attachmentId);
+  URL.revokeObjectURL(attachment.previewUrl);
+  renderCodexAttachments();
+  await api(`/api/codex/attachments/${encodeURIComponent(attachmentId)}`, { method: 'DELETE' }).catch(() => {});
+}
+
+async function clearCodexAttachments(release = true) {
+  const attachments = codexState.attachments;
+  codexState.attachments = [];
+  for (const attachment of attachments) {
+    URL.revokeObjectURL(attachment.previewUrl);
+    if (release) {
+      await api(`/api/codex/attachments/${encodeURIComponent(attachment.id)}`, { method: 'DELETE' }).catch(() => {});
+    }
+  }
+  renderCodexAttachments();
+}
+
+function readCodexImageData(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = String(reader.result || '');
+      resolve({ data: dataUrl.split(',')[1] || '', dataUrl });
+    };
+    reader.onerror = () => reject(new Error(`无法读取图片：${file.name}`));
+    reader.readAsDataURL(file);
+  });
+}
+
+async function addCodexImages(fileList) {
+  if (codexState.running) return;
+  const files = [...(fileList || [])].filter((file) => file instanceof File);
+  if (!files.length) return;
+  const remaining = CODEX_IMAGE_MAX_COUNT - codexState.attachments.length;
+  if (remaining <= 0) {
+    showToast(`一次最多发送 ${CODEX_IMAGE_MAX_COUNT} 张图片。`, true);
+    return;
+  }
+  for (const file of files.slice(0, remaining)) {
+    const mimeType = codexImageMime(file);
+    if (!mimeType) {
+      showToast(`不支持图片格式：${file.name}`, true);
+      continue;
+    }
+    if (file.size > CODEX_IMAGE_MAX_BYTES) {
+      showToast(`图片不能超过 8 MB：${file.name}`, true);
+      continue;
+    }
+    try {
+      const imageData = await readCodexImageData(file);
+      const result = await api('/api/codex/attachments', {
+        method: 'POST',
+        body: JSON.stringify({ name: file.name, mimeType, data: imageData.data }),
+      });
+      const attachment = result.attachment;
+      codexState.attachments.push({
+        ...attachment,
+        previewUrl: imageData.dataUrl,
+      });
+      renderCodexAttachments();
+    } catch (error) {
+      showToast(error.message || `图片添加失败：${file.name}`, true);
+    }
+  }
+  if (files.length > remaining) showToast(`已添加前 ${remaining} 张图片。`);
+}
+
 function showCodexThinking(message = 'Codex 正在思考…') {
   let item = codexState.thinkingNode;
   if (!item?.isConnected) {
@@ -2670,6 +2934,7 @@ function setCodexRunning(running, message = '') {
   elements.codexPanel.classList.toggle('running', running);
   elements.codexExpandButton.classList.toggle('running', running);
   elements.codexSendButton.disabled = running || !canUseCodex;
+  elements.codexAttachButton.disabled = running || !canUseCodex;
   elements.codexSendButton.title = running ? '等待当前回答结束后发送' : '发送给 Codex';
   elements.codexPrompt.disabled = !canUseCodex;
   elements.codexPrompt.placeholder = running
@@ -3015,6 +3280,7 @@ function unloadCodexHistory() {
   renderCodexWorkspaceOptions();
   setCodexHistoryCollapsed(false);
   elements.codexPrompt.value = '';
+  void clearCodexAttachments();
   setCodexRunning(false, '就绪');
 }
 
@@ -3123,7 +3389,7 @@ function appendCodexTurnDivider() {
   elements.codexMessages.append(divider);
 }
 
-function createCodexMessage(role, text, messageId = '', persist = true, shouldScroll = true) {
+function createCodexMessage(role, text, messageId = '', persist = true, shouldScroll = true, attachments = []) {
   const storedId = messageId || createCodexLocalId('message');
   if (persist) {
     const existing = codexState.messages.find((message) => message.id === storedId);
@@ -3156,6 +3422,7 @@ function createCodexMessage(role, text, messageId = '', persist = true, shouldSc
   const body = document.createElement('div');
   body.className = 'codex-message-body';
   renderCodexMessageBody(body, text);
+  renderCodexMessageAttachments(body, attachments);
   item.append(label, body);
   elements.codexMessages.append(item);
   if (shouldScroll) scrollCodexMessages();
@@ -3442,7 +3709,7 @@ async function sendCodexPrompt(promptOverride = '') {
     showToast('Codex 当前只允许这台 Nanoleaf 主机使用。', true);
     return false;
   }
-  if (!prompt || codexState.running) return false;
+  if ((!prompt && codexState.attachments.length === 0) || codexState.running) return false;
 
   if (state.dirty && !await saveFile(true)) return false;
   const selection = codeEditor.getSelectedText();
@@ -3459,13 +3726,22 @@ async function sendCodexPrompt(promptOverride = '') {
     selectionStartLine: includeSelection ? range.start.row + 1 : 0,
     selectionEndLine: includeSelection ? range.end.row + 1 : 0,
     includeCompileLog: Boolean(usesCurrentProject && elements.codexCompileLogContext.checked),
+    attachments: codexState.attachments.map((attachment) => attachment.id),
     threadId: codexState.activeThreadId || '',
     newThread: !codexState.activeThreadId && codexState.newThread,
   };
 
   openCodexPane();
   codexState.filesChanged = false;
-  createCodexMessage('user', prompt);
+  const messageAttachments = codexState.attachments.map((attachment) => ({ ...attachment }));
+  createCodexMessage(
+    'user',
+    prompt || `图片附件（${codexState.attachments.length} 张）`,
+    '',
+    true,
+    true,
+    messageAttachments,
+  );
   elements.codexPrompt.value = '';
   setCodexRunning(true, '正在启动本机 Codex…');
   try {
@@ -3473,11 +3749,13 @@ async function sendCodexPrompt(promptOverride = '') {
       method: 'POST',
       body: JSON.stringify(body),
     });
+    await clearCodexAttachments(false);
     codexState.newThread = false;
     codexState.runId = result.run.id;
     connectCodexRun(result.run.id);
     return true;
   } catch (error) {
+    await clearCodexAttachments();
     createCodexMessage('notice', error.message);
     finishCodexRun('无法启动 Codex', true);
     return false;
@@ -4565,6 +4843,30 @@ elements.uploadInput.addEventListener('change', async () => {
     elements.uploadInput.value = '';
   }
 });
+elements.codexAttachButton.addEventListener('click', () => elements.codexAttachmentInput.click());
+elements.codexAttachmentInput.addEventListener('change', async () => {
+  try {
+    await addCodexImages(elements.codexAttachmentInput.files);
+  } finally {
+    elements.codexAttachmentInput.value = '';
+  }
+});
+elements.codexComposer.addEventListener('dragover', (event) => {
+  if (!event.dataTransfer?.types?.includes('Files') || codexState.running) return;
+  event.preventDefault();
+  elements.codexComposer.classList.add('image-drop-active');
+  event.dataTransfer.dropEffect = 'copy';
+});
+elements.codexComposer.addEventListener('dragleave', (event) => {
+  if (event.relatedTarget && elements.codexComposer.contains(event.relatedTarget)) return;
+  elements.codexComposer.classList.remove('image-drop-active');
+});
+elements.codexComposer.addEventListener('drop', (event) => {
+  if (!event.dataTransfer?.files?.length || codexState.running) return;
+  event.preventDefault();
+  elements.codexComposer.classList.remove('image-drop-active');
+  void addCodexImages(event.dataTransfer.files);
+});
 elements.pdfTab.addEventListener('click', () => switchPreview('pdf'));
 elements.logTab.addEventListener('click', () => switchPreview('log'));
 elements.codexComposer.addEventListener('submit', (event) => {
@@ -4586,6 +4888,12 @@ elements.codexPrompt.addEventListener('keydown', (event) => {
   if (codexState.running) return;
   event.preventDefault();
   sendCodexPrompt();
+});
+elements.codexPrompt.addEventListener('paste', (event) => {
+  const images = [...(event.clipboardData?.files || [])].filter((file) => codexImageMime(file));
+  if (!images.length) return;
+  event.preventDefault();
+  void addCodexImages(images);
 });
 elements.codexStopButton.addEventListener('click', () => stopCodexRun());
 elements.codexNewThreadButton.addEventListener('click', () => {

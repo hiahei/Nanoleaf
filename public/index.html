@@ -358,9 +358,11 @@
               <span>刷新对话</span>
             </button>
           </div>
+          <div class="codex-attachments" id="codexAttachments" hidden aria-live="polite"></div>
           <label class="codex-prompt-wrap" for="codexPrompt">
             <textarea id="codexPrompt" rows="3" maxlength="12000" placeholder="向 Codex 描述问题…（Enter 发送，Shift+Enter 换行）"></textarea>
           </label>
+          <input id="codexAttachmentInput" type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple hidden>
           <div class="codex-composer-footer">
             <div class="codex-composer-state">
               <label class="codex-model-picker" id="codexModelPicker" title="默认跟随本机 config.toml；覆盖选择后应用于下一次 Codex 任务">
@@ -391,6 +393,7 @@
               <span class="codex-run-status" id="codexRunStatus">就绪</span>
             </div>
             <div class="codex-composer-actions">
+              <button class="codex-attach-button" id="codexAttachButton" type="button" title="添加图片附件" aria-label="添加图片附件"><span aria-hidden="true">＋</span><span>图片</span></button>
               <button class="codex-stop-button" id="codexStopButton" type="button" hidden>停止</button>
               <button class="codex-send-button" id="codexSendButton" type="submit"><span aria-hidden="true">✦</span> 发送</button>
             </div>
