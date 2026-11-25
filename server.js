@@ -14,21 +14,21 @@ const ACE_ASSETS_ROOT = path.join(APP_ROOT, 'node_modules', 'ace-builds', 'src-m
 const PDFJS_ASSETS_ROOT = path.join(APP_ROOT, 'node_modules', 'pdfjs-dist');
 const KATEX_ASSETS_ROOT = path.join(APP_ROOT, 'node_modules', 'katex', 'dist');
 const DEFAULT_WORKSPACE_ROOT = path.resolve(
-  process.env.LOCAL_TEX_WORKSPACE || path.join(APP_ROOT, 'workspace'),
+  process.env.NANOLEAF_WORKSPACE || path.join(APP_ROOT, 'workspace'),
 );
-const DATA_ROOT = path.resolve(process.env.LOCAL_TEX_DATA_ROOT || path.join(APP_ROOT, 'data'));
+const DATA_ROOT = path.resolve(process.env.NANOLEAF_DATA_ROOT || path.join(APP_ROOT, 'data'));
 const PROJECTS_FILE = path.join(DATA_ROOT, 'projects.json');
 const LAN_SETTINGS_FILE = path.join(DATA_ROOT, 'lan-settings.json');
 const SERVICE_SETTINGS_FILE = path.join(DATA_ROOT, 'service-settings.json');
 const PROFILE_SETTINGS_FILE = path.join(DATA_ROOT, 'profile-settings.json');
 const CODEX_SETTINGS_FILE = path.join(DATA_ROOT, 'codex-settings.json');
-const SERVICE_PID_FILE = path.join(DATA_ROOT, 'localtex.pid');
-const HOST = process.env.LOCAL_TEX_HOST || '127.0.0.1';
-const PORT = Number(process.env.LOCAL_TEX_PORT || 4177);
+const SERVICE_PID_FILE = path.join(DATA_ROOT, 'nanoleaf.pid');
+const HOST = process.env.NANOLEAF_HOST || '127.0.0.1';
+const PORT = Number(process.env.NANOLEAF_PORT || 4177);
 const NETWORK_CAPABLE = !['127.0.0.1', 'localhost', '::1'].includes(HOST);
 const MAX_BODY_BYTES = 30 * 1024 * 1024;
 const BUILD_DIRECTORY = '.tex-build';
-const LOCAL_PICKER_RESULT_PREFIX = '__LOCALTEX_SELECTED_PATH__:';
+const LOCAL_PICKER_RESULT_PREFIX = '__NANOLEAF_SELECTED_PATH__:';
 
 const ignoredNames = new Set([
   '.git',
@@ -112,7 +112,7 @@ function isHostRequest(request) {
 }
 
 function requestToken(request, url) {
-  return String(request.headers['x-localtex-token'] || url.searchParams.get('token') || '');
+  return String(request.headers['x-nanoleaf-token'] || url.searchParams.get('token') || '');
 }
 
 function tokenMatches(candidate) {
@@ -363,7 +363,7 @@ async function getProject(projectId) {
 
 async function projectFromRequest(request, url) {
   const projectId = String(
-    request.headers['x-localtex-project']
+    request.headers['x-nanoleaf-project']
     || url?.searchParams.get('project')
     || '',
   );
@@ -451,14 +451,14 @@ function browseLocalPath(mode) {
 
   const modernFolderPickerSource = path.join(APP_ROOT, 'tools', 'picker', 'ModernFolderPicker.cs').replaceAll("'", "''");
   const ownerScript = [
-    "Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; using System.Windows.Forms; public sealed class LocalTeXWindowWrapper : IWin32Window { public LocalTeXWindowWrapper(IntPtr handle) { Handle = handle; } public IntPtr Handle { get; private set; } } public static class LocalTeXNativeWindow { [DllImport(\"user32.dll\")] public static extern IntPtr GetForegroundWindow(); }' -ReferencedAssemblies System.Windows.Forms",
-    '$foregroundHandle = [LocalTeXNativeWindow]::GetForegroundWindow()',
-    '$owner = [LocalTeXWindowWrapper]::new($foregroundHandle)',
+    "Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; using System.Windows.Forms; public sealed class NanoleafWindowWrapper : IWin32Window { public NanoleafWindowWrapper(IntPtr handle) { Handle = handle; } public IntPtr Handle { get; private set; } } public static class NanoleafNativeWindow { [DllImport(\"user32.dll\")] public static extern IntPtr GetForegroundWindow(); }' -ReferencedAssemblies System.Windows.Forms",
+    '$foregroundHandle = [NanoleafNativeWindow]::GetForegroundWindow()',
+    '$owner = [NanoleafWindowWrapper]::new($foregroundHandle)',
   ];
   const folderScript = [
     '[Console]::OutputEncoding = [System.Text.Encoding]::UTF8',
     `Add-Type -Path '${modernFolderPickerSource}'`,
-    "$selected = [LocalTeX.NativeDialogs.ModernFolderPicker]::Pick('选择 LaTeX 项目文件夹', '选择文件夹')",
+    "$selected = [Nanoleaf.NativeDialogs.ModernFolderPicker]::Pick('选择 LaTeX 项目文件夹', '选择文件夹')",
     `if (-not [string]::IsNullOrWhiteSpace($selected)) { Write-Output ('${LOCAL_PICKER_RESULT_PREFIX}' + $selected) }`,
   ].join('; ');
   const fileScript = [
@@ -897,8 +897,8 @@ async function compileTex(mainFile, workspaceRoot, projectId) {
     const stagedPdfPath = path.join(buildDirectory, `${mainStem}.pdf`);
     const succeeded = result.code === 0 && fs.existsSync(stagedPdfPath);
     const cleanBuildSummary = [
-      '[LocalTeX] 干净编译：本次未读取上一次的辅助文件。',
-      `[LocalTeX] 构建步骤：${buildSteps}${bibliographyTool ? `（包含 ${bibliographyTool}）` : ''}。`,
+      '[Nanoleaf] 干净编译：本次未读取上一次的辅助文件。',
+      `[Nanoleaf] 构建步骤：${buildSteps}${bibliographyTool ? `（包含 ${bibliographyTool}）` : ''}。`,
     ].join('\n');
     const output = `${cleanBuildSummary}\n$ ${commandDescription}\n\n${result.output}`;
 
@@ -944,7 +944,7 @@ async function serveFile(response, absolutePath, cache = false) {
 async function handleApi(request, response, url) {
   if (request.method === 'PUT' && url.pathname === '/api/service/state') {
     if (!isHostRequest(request)) {
-      return sendJson(response, 403, { error: '只有主机可以控制 LocalTeX 工作服务。' });
+      return sendJson(response, 403, { error: '只有主机可以控制 Nanoleaf 工作服务。' });
     }
     const body = await readJsonBody(request);
     if (typeof body.active !== 'boolean') {
@@ -956,7 +956,7 @@ async function handleApi(request, response, url) {
       lanSettings.enabled = false;
       lanSettings.updatedAt = new Date().toISOString();
       await saveLanSettings();
-      collaborationServer?.disconnectAll(4002, '主机已暂停 LocalTeX 工作服务');
+      collaborationServer?.disconnectAll(4002, '主机已暂停 Nanoleaf 工作服务');
     }
     return sendJson(response, 200, { service: serviceView(), lan: lanView(true) });
   }
@@ -966,7 +966,7 @@ async function handleApi(request, response, url) {
       return sendJson(response, 403, { error: '只有主机可以控制局域网分享。' });
     }
     if (!NETWORK_CAPABLE) {
-      return sendJson(response, 409, { error: '当前服务只监听本机，请使用 LocalTeX 启动器重新打开。' });
+      return sendJson(response, 409, { error: '当前服务只监听本机，请使用 Nanoleaf 启动器重新打开。' });
     }
     const body = await readJsonBody(request);
     if (typeof body.enabled !== 'boolean') {
@@ -1081,7 +1081,7 @@ async function handleApi(request, response, url) {
   if (request.method === 'GET' && url.pathname === '/api/config') {
     const projects = await loadProjectRegistry();
     const requestedId = String(
-      request.headers['x-localtex-project']
+      request.headers['x-nanoleaf-project']
       || url.searchParams.get('project')
       || '',
     );
@@ -1109,7 +1109,7 @@ async function handleApi(request, response, url) {
 
   if (url.pathname.startsWith('/api/codex/')) {
     if (!isHostRequest(request)) {
-      return sendJson(response, 403, { error: '当前 Codex 功能只允许 LocalTeX 主机使用。' });
+      return sendJson(response, 403, { error: '当前 Codex 功能只允许 Nanoleaf 主机使用。' });
     }
 
     if (request.method === 'GET' && url.pathname === '/api/codex/settings') {
@@ -1268,7 +1268,7 @@ async function handleApi(request, response, url) {
 
   if (request.method === 'POST' && url.pathname === '/api/open-folder') {
     if (!isHostRequest(request)) {
-      return sendJson(response, 403, { error: 'Only the LocalTeX host can open local folders.' });
+      return sendJson(response, 403, { error: 'Only the Nanoleaf host can open local folders.' });
     }
     const body = await readJsonBody(request);
     const relativePath = normalizeRelative(body.path || '');
@@ -1494,18 +1494,18 @@ async function requestHandler(request, response) {
 
     if (!hostRequest && !isLanSharingEnabled()) {
       if (url.pathname.startsWith('/api/')) {
-        return sendJson(response, 403, { error: 'LocalTeX 主机当前没有开启局域网分享。' });
+        return sendJson(response, 403, { error: 'Nanoleaf 主机当前没有开启局域网分享。' });
       }
-      return sendText(response, 403, 'LocalTeX LAN sharing is currently disabled by the host.');
+      return sendText(response, 403, 'Nanoleaf LAN sharing is currently disabled by the host.');
     }
 
     if (url.pathname.startsWith('/api/')) {
       if (!isAuthorizedRequest(request, url)) {
-        return sendJson(response, 401, { error: '需要有效的 LocalTeX 局域网访问链接。' });
+        return sendJson(response, 401, { error: '需要有效的 Nanoleaf 局域网访问链接。' });
       }
       const controllerEndpoint = url.pathname === '/api/config' || url.pathname === '/api/service/state';
       if (hostRequest && !isWorkServiceActive() && !controllerEndpoint) {
-        return sendJson(response, 423, { error: 'LocalTeX 工作服务已由主机暂停。' });
+        return sendJson(response, 423, { error: 'Nanoleaf 工作服务已由主机暂停。' });
       }
       return await handleApi(request, response, url);
     }
@@ -1612,7 +1612,7 @@ async function start() {
   server.listen(PORT, HOST, () => {
     const compiler = detectCompiler();
     const localUrl = `http://${HOST === '0.0.0.0' ? '127.0.0.1' : HOST}:${PORT}`;
-    console.log(`LocalTeX is running at ${localUrl}`);
+    console.log(`Nanoleaf is running at ${localUrl}`);
     console.log(`Project registry: ${PROJECTS_FILE}`);
     console.log(`Compiler: ${compiler ? compiler.label : 'not found'}`);
     console.log(`Work service: ${isWorkServiceActive() ? 'active' : 'paused'}`);
@@ -1622,7 +1622,7 @@ async function start() {
       for (const shareUrl of shareUrls) console.log(`Share URL: ${shareUrl}`);
     }
 
-    if (process.env.LOCAL_TEX_OPEN_BROWSER === '1') {
+    if (process.env.NANOLEAF_OPEN_BROWSER === '1') {
       const opener = process.platform === 'win32'
         ? { command: 'cmd.exe', args: ['/c', 'start', '', localUrl] }
         : process.platform === 'darwin'

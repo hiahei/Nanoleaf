@@ -1,6 +1,6 @@
 #Requires -RunAsAdministrator
 $ErrorActionPreference = 'Stop'
-$ruleName = 'LocalTeX LAN Collaboration (Private TCP 4177)'
+$ruleName = 'Nanoleaf LAN Collaboration (Private TCP 4177)'
 $portableNode = Join-Path $PSScriptRoot 'tools\node\node.exe'
 
 if (-not (Test-Path -LiteralPath $portableNode)) {
@@ -9,7 +9,7 @@ if (-not (Test-Path -LiteralPath $portableNode)) {
 
 $existing = Get-NetFirewallRule -DisplayName $ruleName -ErrorAction SilentlyContinue
 if ($existing) {
-    Write-Host 'The LocalTeX private-network firewall rule already exists.' -ForegroundColor Green
+    Write-Host 'The Nanoleaf private-network firewall rule already exists.' -ForegroundColor Green
     exit 0
 }
 
@@ -23,7 +23,7 @@ New-NetFirewallRule `
     -RemoteAddress LocalSubnet `
     -Profile Private | Out-Null
 
-Write-Host 'LocalTeX can now accept TCP 4177 from the local subnet on private networks.' -ForegroundColor Green
+Write-Host 'Nanoleaf can now accept TCP 4177 from the local subnet on private networks.' -ForegroundColor Green
 
 $publicProfiles = Get-NetConnectionProfile | Where-Object {
     $_.NetworkCategory -eq 'Public' -and $_.IPv4Connectivity -ne 'Disconnected'

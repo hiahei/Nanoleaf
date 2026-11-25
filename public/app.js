@@ -1,5 +1,5 @@
-const ACCESS_TOKEN_STORAGE_KEY = 'localtex.lan-token.v1';
-const COLLABORATOR_STORAGE_KEY = 'localtex.collaborator.v1';
+const ACCESS_TOKEN_STORAGE_KEY = 'nanoleaf.lan-token.v1';
+const COLLABORATOR_STORAGE_KEY = 'nanoleaf.collaborator.v1';
 const COLLABORATOR_COLORS = ['#176b5a', '#7555a6', '#b15c32', '#2d7194', '#a14368', '#557d34', '#8a641c', '#465c92'];
 
 function readAccessToken() {
@@ -295,7 +295,7 @@ const CODEX_MATH_DELIMITERS = [
 let pdfJsRuntimePromise = null;
 let pdfJsViewerRuntimePromise = null;
 
-const PANEL_LAYOUT_STORAGE_KEY = 'localtex.panel-layout.v1';
+const PANEL_LAYOUT_STORAGE_KEY = 'nanoleaf.panel-layout.v1';
 const panelLayout = {
   activeDrag: null,
   editorResizeFrame: 0,
@@ -303,8 +303,8 @@ const panelLayout = {
   resizeFrame: 0,
 };
 
-const EDITOR_VIEW_STORAGE_KEY = 'localtex.editor-view.v1';
-const THEME_STORAGE_KEY = 'localtex.theme.v1';
+const EDITOR_VIEW_STORAGE_KEY = 'nanoleaf.editor-view.v1';
+const THEME_STORAGE_KEY = 'nanoleaf.theme.v1';
 const EDITOR_FONT_SIZES = [12, 13, 14, 15, 16, 18, 20];
 let activeTheme = loadTheme();
 const editorView = loadEditorView();
@@ -408,7 +408,7 @@ function initializeCodeEditor() {
   textInput.setAttribute('spellcheck', 'false');
 
   editor.commands.addCommand({
-    name: 'localtexSave',
+    name: 'nanoleafSave',
     bindKey: { win: 'Ctrl-S', mac: 'Command-S' },
     exec: () => compileDocument(),
   });
@@ -419,7 +419,7 @@ function initializeCodeEditor() {
     readOnly: true,
   });
   editor.commands.addCommand({
-    name: 'localtexToggleWrap',
+    name: 'nanoleafToggleWrap',
     bindKey: { win: 'Alt-Z', mac: 'Alt-Z' },
     exec: () => toggleEditorWrap(),
   });
@@ -1201,7 +1201,7 @@ function connectCollaborationSocket(session) {
 
 async function startDocumentCollaboration(filePath) {
   stopDocumentCollaboration();
-  const runtime = window.LocalTeXCollaborationRuntime;
+  const runtime = window.NanoleafCollaborationRuntime;
   if (!runtime?.Y || !window.WebSocket) {
     codeEditor.setReadOnly(false);
     setCollaborationStatus('offline');
@@ -1307,7 +1307,7 @@ function applyNetworkConfig(config) {
   elements.shareDialogDescription.textContent = !workServiceActive
     ? '工作服务当前已暂停；恢复后可继续编辑或开启分享。'
     : !lan.available
-      ? '请使用新的 LocalTeX 启动器重新打开服务。'
+      ? '请使用新的 Nanoleaf 启动器重新打开服务。'
       : lan.enabled
         ? '同一局域网的协作者可以通过下面的安全链接进入并实时编辑。'
         : '分享处于关闭状态；需要协作时再开启即可。';
@@ -1407,7 +1407,7 @@ async function setWorkServiceState(active) {
       return;
     }
     const sharingNote = state.config?.lan?.enabled ? ' 局域网分享也会关闭，协作者将断开。' : '';
-    if (!window.confirm(`确定暂停 LocalTeX 工作服务吗？${sharingNote}\n项目文件不会被删除，之后可直接在页面恢复。`)) {
+    if (!window.confirm(`确定暂停 Nanoleaf 工作服务吗？${sharingNote}\n项目文件不会被删除，之后可直接在页面恢复。`)) {
       applyServiceConfig(state.config?.service);
       return;
     }
@@ -1425,7 +1425,7 @@ async function setWorkServiceState(active) {
     if (active) {
       await loadProjects();
       if (state.activePath && state.activeProject) await startDocumentCollaboration(state.activePath);
-      showToast('LocalTeX 工作服务已恢复。');
+      showToast('Nanoleaf 工作服务已恢复。');
     } else {
       closeShareDialog();
       showToast('工作服务已暂停，主机控制器仍保持在线。');
@@ -1468,8 +1468,8 @@ async function api(url, options = {}) {
     ...options,
     headers: {
       'Content-Type': 'application/json',
-      ...(accessToken ? { 'X-LocalTeX-Token': accessToken } : {}),
-      ...(state.activeProject ? { 'X-LocalTeX-Project': state.activeProject.id } : {}),
+      ...(accessToken ? { 'X-Nanoleaf-Token': accessToken } : {}),
+      ...(state.activeProject ? { 'X-Nanoleaf-Project': state.activeProject.id } : {}),
       ...(options.headers || {}),
     },
   });
@@ -1683,7 +1683,7 @@ async function openProject(projectId) {
     const config = await api('/api/config');
     applyNetworkConfig(config);
     elements.currentProjectName.textContent = data.project.name;
-    document.title = `LocalTex-${data.project.name}`;
+    document.title = `Nanoleaf-${data.project.name}`;
     elements.workspacePath.textContent = config.workspace;
     elements.compilerStatus.textContent = config.compiler || '未找到 TeX 编译器';
     elements.compilerStatus.className = `status-pill ${config.compiler ? 'ready' : 'missing'}`;
@@ -1755,7 +1755,7 @@ async function showProjectHome() {
   stopDocumentCollaboration();
   state.activeProject = null;
   updateProjectUrl();
-  document.title = 'LocalTeX';
+  document.title = 'Nanoleaf';
   elements.editorApp.hidden = true;
   elements.projectHome.hidden = false;
   await loadProjects();
@@ -2434,7 +2434,7 @@ function renderCodexModelOptions(config = state.config?.codex) {
 
   const activeModel = selectedModel || configuredModel;
   const catalogEntry = codexState.models.find((model) => model.id === activeModel);
-  const source = selectedModel ? 'LocalTeX 覆盖选择' : '跟随本机 config.toml';
+  const source = selectedModel ? 'Nanoleaf 覆盖选择' : '跟随本机 config.toml';
   elements.codexModelPicker.title = activeModel
     ? `${source}：${codexModelName(activeModel)}${catalogEntry?.description ? `\n${catalogEntry.description}` : ''}`
     : source;
@@ -3439,7 +3439,7 @@ function connectCodexRun(runId) {
 async function sendCodexPrompt(promptOverride = '') {
   const prompt = String(promptOverride || elements.codexPrompt.value).trim();
   if (!state.config?.codex?.canUse) {
-    showToast('Codex 当前只允许这台 LocalTeX 主机使用。', true);
+    showToast('Codex 当前只允许这台 Nanoleaf 主机使用。', true);
     return false;
   }
   if (!prompt || codexState.running) return false;

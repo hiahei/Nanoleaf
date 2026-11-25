@@ -1,7 +1,7 @@
 using System;
 using System.Runtime.InteropServices;
 
-namespace LocalTeX.NativeDialogs
+namespace Nanoleaf.NativeDialogs
 {
     public static class ModernFolderPicker
     {

@@ -4,10 +4,10 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#edf2f0">
-  <title>LocalTeX</title>
+  <title>Nanoleaf</title>
   <script>
     try {
-      document.documentElement.dataset.theme = localStorage.getItem('localtex.theme.v1') || 'light';
+      document.documentElement.dataset.theme = localStorage.getItem('nanoleaf.theme.v1') || 'light';
     } catch {
       document.documentElement.dataset.theme = 'light';
     }
@@ -22,7 +22,7 @@
         <div class="brand-block">
           <div class="brand-mark" aria-hidden="true">T<span>X</span></div>
           <div>
-            <h1>LocalTeX</h1>
+            <h1>Nanoleaf</h1>
             <p>本地项目与文件</p>
           </div>
         </div>
@@ -71,7 +71,7 @@
       <div class="brand-block">
         <button class="back-projects" id="projectsButton" type="button" aria-label="返回项目列表">←</button>
         <div class="editor-project-identity">
-          <h1 id="currentProjectName">LocalTeX</h1>
+          <h1 id="currentProjectName">Nanoleaf</h1>
           <p id="workspacePath">正在连接本地工作区…</p>
         </div>
       </div>
@@ -410,13 +410,13 @@
       <button class="share-dialog-close" id="shareDialogClose" type="button" aria-label="关闭">×</button>
       <span class="eyebrow">LAN COLLABORATION</span>
       <h2 id="shareDialogTitle">主机与协作控制</h2>
-      <p id="shareDialogDescription">主机可以独立控制 LocalTeX 服务与局域网分享。</p>
+      <p id="shareDialogDescription">主机可以独立控制 Nanoleaf 服务与局域网分享。</p>
 
-      <section class="host-service-control" id="serviceControl" aria-label="LocalTeX 服务控制">
+      <section class="host-service-control" id="serviceControl" aria-label="Nanoleaf 服务控制">
         <div class="service-control-heading">
           <div>
             <span class="eyebrow">HOST CONTROLLER</span>
-            <strong>LocalTeX 主机控制器在线</strong>
+            <strong>Nanoleaf 主机控制器在线</strong>
           </div>
           <span class="service-mode-badge" id="serviceRunMode">隐藏运行</span>
         </div>
@@ -425,7 +425,7 @@
           <input id="workServiceToggle" type="checkbox" checked>
           <span class="service-preference-switch" aria-hidden="true"><span></span></span>
           <span>
-            <strong>LocalTeX 工作服务</strong>
+            <strong>Nanoleaf 工作服务</strong>
             <small id="serviceModeDescription">已开启：可以读取项目、编辑文件和编译 PDF。</small>
           </span>
         </label>
@@ -457,7 +457,7 @@
 
       <div class="share-start-guide" id="shareStartGuide" hidden>
         <strong>当前启动方式不支持动态分享</strong>
-        <p>请停止当前调试服务，再双击 <code>LocalTeX.vbs</code>；它会静默启动隐藏的主机控制器，不会留下常驻 CMD 窗口。</p>
+        <p>请停止当前调试服务，再双击 <code>Nanoleaf.vbs</code>；它会静默启动隐藏的主机控制器，不会留下常驻 CMD 窗口。</p>
       </div>
 
       <label class="collaborator-name-field" for="collaboratorNameInput">
@@ -475,7 +475,7 @@
   <div class="service-stopped-screen" id="servicePausedScreen" hidden>
     <div>
       <span class="eyebrow">HOST CONTROLLER ONLINE</span>
-      <h2>LocalTeX 工作服务已暂停</h2>
+      <h2>Nanoleaf 工作服务已暂停</h2>
       <p>项目文件、编译与局域网接口均已锁定，主机控制器仍安全在线。</p>
       <button class="button primary" id="resumeServiceButton" type="button">恢复工作服务</button>
     </div>

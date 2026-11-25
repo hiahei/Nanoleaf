@@ -49,7 +49,7 @@ class CodexAppServerClient {
   async launch() {
     const cliScript = codexCliScript();
     if (!fs.existsSync(cliScript)) {
-      throw new Error('未找到随 LocalTeX 安装的 Codex CLI。');
+      throw new Error('未找到随 Nanoleaf 安装的 Codex CLI。');
     }
 
     this.closing = false;
@@ -79,8 +79,8 @@ class CodexAppServerClient {
 
     await this.rawRequest('initialize', {
       clientInfo: {
-        name: 'localtex',
-        title: 'LocalTeX',
+        name: 'nanoleaf',
+        title: 'Nanoleaf',
         version: '0.1.0',
       },
       capabilities: {
@@ -134,7 +134,7 @@ class CodexAppServerClient {
     if (message.id !== undefined && message.method) {
       this.write(child, {
         id: message.id,
-        error: { code: -32601, message: 'LocalTeX does not handle this server request.' },
+        error: { code: -32601, message: 'Nanoleaf does not handle this server request.' },
       });
       return;
     }

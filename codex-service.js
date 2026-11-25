@@ -219,7 +219,7 @@ function modelReasoningEfforts(entry) {
   return efforts;
 }
 
-function localTeXDisplayPrompt(value) {
+function nanoleafDisplayPrompt(value) {
   const text = String(value || '').trim();
   const marker = '用户要求：\n';
   const markerIndex = text.indexOf(marker);
@@ -248,7 +248,7 @@ function threadMessages(thread) {
     const timestamp = Number(turn.startedAt || turn.completedAt || thread.updatedAt || 0) * 1000;
     for (const item of Array.isArray(turn.items) ? turn.items : []) {
       if (item?.type === 'userMessage') {
-        const text = localTeXDisplayPrompt(userMessageText(item.content));
+        const text = nanoleafDisplayPrompt(userMessageText(item.content));
         if (text) messages.push({
           id: String(item.id || randomUUID()),
           role: 'user',
@@ -286,7 +286,7 @@ function threadMessages(thread) {
 }
 
 function threadView(thread, includeMessages = false, options = {}) {
-  const preview = localTeXDisplayPrompt(thread?.preview);
+  const preview = nanoleafDisplayPrompt(thread?.preview);
   const view = {
     id: normalizedThreadId(thread?.id),
     name: String(thread?.name || '').trim(),
@@ -346,7 +346,7 @@ function permissionInstruction(mode) {
 
 function buildPrompt(context, permissionMode = 'read-only') {
   const sections = [
-    `你是 LocalTeX 中的论文写作与 LaTeX 助手。请使用与用户相同的语言回答。`,
+    `你是 Nanoleaf 中的论文写作与 LaTeX 助手。请使用与用户相同的语言回答。`,
     permissionInstruction(permissionMode),
     permissionMode === 'read-only'
       ? `请优先给出准确、可操作的建议；如果建议修改源码，请明确指出文件、位置和建议替换内容。`
@@ -809,7 +809,7 @@ class CodexService {
           : fileChangesFailed
             ? '文件修改没有完成，请查看上方的失败记录。'
             : 'Codex 已完成，但没有返回文字说明。';
-        const fallbackMessageId = `localtex-result-${job.id}`;
+        const fallbackMessageId = `nanoleaf-result-${job.id}`;
         job.assistantOutput = fallbackText;
         job.assistantMessageId = fallbackMessageId;
         this.emit(job, {
@@ -917,5 +917,5 @@ function createCodexService(options = {}) {
 module.exports = {
   buildPrompt,
   createCodexService,
-  localTeXDisplayPrompt,
+  nanoleafDisplayPrompt,
 };

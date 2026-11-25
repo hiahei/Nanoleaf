@@ -1,12 +1,12 @@
 # -----------------------------------------------------------------------------
-# LocalTeX private user content
+# Nanoleaf private user content
 # -----------------------------------------------------------------------------
 
 # Paper sources, figures, bibliographies, and generated PDFs opened by the user.
 /workspace/
 
 # Runtime state: LAN access token, project paths, display name, timestamps,
-# service PID, and service logs. LocalTeX recreates this directory on startup.
+# service PID, and service logs. Nanoleaf recreates this directory on startup.
 /data/
 
 # Local environment variables and package-manager credentials.

@@ -12,29 +12,29 @@ const Y = require('yjs');
 const { createCodexAppServerClient } = require('../codex-app-server');
 const { createCodexService } = require('../codex-service');
 
-const testRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'localtex-test-'));
+const testRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'nanoleaf-test-'));
 const testWorkspace = path.join(testRoot, 'workspace');
 fs.mkdirSync(testWorkspace, { recursive: true });
 fs.writeFileSync(path.join(testWorkspace, 'main.tex'), String.raw`\documentclass{article}
 \begin{document}
-LocalTeX First Document \cite{localtex2026}
+Nanoleaf First Document \cite{nanoleaf2026}
 \bibliographystyle{plain}
 \bibliography{references}
 \end{document}
 `, 'utf8');
-fs.writeFileSync(path.join(testWorkspace, 'references.bib'), String.raw`@article{localtex2026,
-  title = {LocalTeX Clean Build Test},
-  author = {LocalTeX},
+fs.writeFileSync(path.join(testWorkspace, 'references.bib'), String.raw`@article{nanoleaf2026,
+  title = {Nanoleaf Clean Build Test},
+  author = {Nanoleaf},
   year = {2026}
 }
 `, 'utf8');
 fs.writeFileSync(path.join(testWorkspace, 'collab.tex'), 'Collaborative document\n', 'utf8');
 fs.writeFileSync(path.join(testWorkspace, 'external-sync.tex'), 'Before external edit\n', 'utf8');
-process.env.LOCAL_TEX_DATA_ROOT = path.join(testRoot, 'data');
-process.env.LOCAL_TEX_WORKSPACE = testWorkspace;
-fs.mkdirSync(process.env.LOCAL_TEX_DATA_ROOT, { recursive: true });
-fs.writeFileSync(path.join(process.env.LOCAL_TEX_DATA_ROOT, 'projects.json'), JSON.stringify([{
-  id: 'localtex-workspace',
+process.env.NANOLEAF_DATA_ROOT = path.join(testRoot, 'data');
+process.env.NANOLEAF_WORKSPACE = testWorkspace;
+fs.mkdirSync(process.env.NANOLEAF_DATA_ROOT, { recursive: true });
+fs.writeFileSync(path.join(process.env.NANOLEAF_DATA_ROOT, 'projects.json'), JSON.stringify([{
+  id: 'nanoleaf-workspace',
   name: 'Test project',
   path: testWorkspace,
   mainFile: 'main.tex',
@@ -116,7 +116,7 @@ function freeTcpPort() {
 function seedTestProjectRegistry(dataRoot) {
   fs.mkdirSync(dataRoot, { recursive: true });
   fs.writeFileSync(path.join(dataRoot, 'projects.json'), JSON.stringify([{
-    id: 'localtex-workspace',
+    id: 'nanoleaf-workspace',
     name: 'Test project',
     path: testWorkspace,
     mainFile: 'main.tex',
@@ -156,7 +156,7 @@ test('serves the editor and local configuration', async () => {
   const pageResponse = await fetch(`${baseUrl}/`);
   assert.equal(pageResponse.status, 200);
   const page = await pageResponse.text();
-  assert.match(page, /LocalTeX/);
+  assert.match(page, /Nanoleaf/);
   assert.match(page, /id="sidebarResizer"/);
   assert.match(page, /id="collapseSidebarButton"/);
   assert.match(page, /id="expandSidebarButton"/);
@@ -339,19 +339,19 @@ test('serves the editor and local configuration', async () => {
 
   const collaborationRuntimeResponse = await fetch(`${baseUrl}/vendor/collaboration.js`);
   assert.equal(collaborationRuntimeResponse.status, 200);
-  assert.match(await collaborationRuntimeResponse.text(), /LocalTeXCollaborationRuntime/);
+  assert.match(await collaborationRuntimeResponse.text(), /NanoleafCollaborationRuntime/);
 
   const scriptResponse = await fetch(`${baseUrl}/app.js`);
   assert.equal(scriptResponse.status, 200);
   const script = await scriptResponse.text();
-  assert.match(script, /localtex\.panel-layout\.v1/);
+  assert.match(script, /nanoleaf\.panel-layout\.v1/);
   assert.match(script, /sidebarCollapsed/);
   assert.match(script, /setSidebarCollapsed/);
   assert.match(script, /setSidebarCollapsed\(!isSidebarCollapsed\(\)\)/);
   assert.match(script, /project-open-area/);
   assert.doesNotMatch(script, /open\.textContent = '打开'/);
-  assert.match(script, /localtex\.editor-view\.v1/);
-  assert.match(script, /localtex\.theme\.v1/);
+  assert.match(script, /nanoleaf\.editor-view\.v1/);
+  assert.match(script, /nanoleaf\.theme\.v1/);
   assert.match(script, /codeEditor\.setTheme\('ace\/theme\/textmate'\)/);
   assert.doesNotMatch(script, /ace\/theme\/github_dark/);
   assert.match(script, /toggleTheme/);
@@ -371,7 +371,7 @@ test('serves the editor and local configuration', async () => {
   assert.match(script, /uploadFiles\(event\.dataTransfer\.files, directory, false\)/);
   const serverSource = await readFile(path.join(__dirname, '..', 'server.js'), 'utf8');
   assert.match(serverSource, /url\.pathname === '\/api\/open-folder'/);
-  assert.match(serverSource, /Only the LocalTeX host can open local folders/);
+  assert.match(serverSource, /Only the Nanoleaf host can open local folders/);
   assert.match(serverSource, /explorer\.exe/);
   assert.match(script, /elements\.mainDocumentSelect\.disabled = running/);
   assert.match(script, /projectQuery/);
@@ -440,7 +440,7 @@ test('serves the editor and local configuration', async () => {
   assert.match(script, /event\.target\.closest\?\.\('\.pdf-page-shell'\)/);
   assert.match(script, /\/api\/synctex\/view/);
   assert.match(script, /\/api\/synctex\/edit/);
-  assert.match(script, /document\.title = `LocalTex-\$\{data\.project\.name\}`/);
+  assert.match(script, /document\.title = `Nanoleaf-\$\{data\.project\.name\}`/);
   assert.match(script, /function setCopyShareFeedback\(/);
   assert.match(script, /setCopyShareFeedback\('copied'\)/);
   assert.match(script, /showToast\('安全分享链接已复制。'\)/);
@@ -641,7 +641,7 @@ test('lets the host persistently switch Codex permissions, model, and reasoning 
     assert.equal(full.codex.reasoningEffort, 'xhigh');
 
     const saved = JSON.parse(fs.readFileSync(
-      path.join(process.env.LOCAL_TEX_DATA_ROOT, 'codex-settings.json'),
+      path.join(process.env.NANOLEAF_DATA_ROOT, 'codex-settings.json'),
       'utf8',
     ));
     assert.equal(saved.permissionMode, 'full-access');
@@ -722,7 +722,7 @@ test('uses the shared Codex history service for listing, reading, and native ren
                   type: 'userMessage',
                   content: [{
                     type: 'text',
-                    text: 'LocalTeX 上下文\n\n用户要求：\n检查算法章节\n\n---\n\n当前文件内容',
+                    text: 'Nanoleaf 上下文\n\n用户要求：\n检查算法章节\n\n---\n\n当前文件内容',
                   }],
                 },
                 {
@@ -1110,7 +1110,7 @@ test('reports completed Codex file changes even without a final agent message', 
   assert.match(fileChange.text, /修改 `main\.tex`/);
   assert.match(fileChange.text, /新增 `sections\/method\.tex`/);
   const fallback = observedEvents.find((event) => (
-    event.type === 'assistant' && event.messageId.startsWith('localtex-result-')
+    event.type === 'assistant' && event.messageId.startsWith('nanoleaf-result-')
   ));
   assert.match(fallback.text, /修改总结：/);
   assert.match(fallback.text, /已按要求处理：修改论文文件/);
@@ -1136,7 +1136,7 @@ test('ignores Windows picker warnings when reading the selected path', () => {
   const selectedPath = String.raw`D:\papers\example-project`;
   const output = [
     '[WARNING] Ignore caches that are heterogeneous',
-    `__LOCALTEX_SELECTED_PATH__:${selectedPath}`,
+    `__NANOLEAF_SELECTED_PATH__:${selectedPath}`,
     '',
   ].join('\r\n');
 
@@ -1144,17 +1144,17 @@ test('ignores Windows picker warnings when reading the selected path', () => {
   assert.equal(parseLocalPickerOutput('[WARNING] Ignore caches that are heterogeneous\r\n'), '');
 });
 
-test('ships a detached reusable LocalTeX launcher', async () => {
-  const launcher = await readFile(path.join(__dirname, '..', 'launch-localtex.ps1'), 'utf8');
-  const windowlessLauncher = await readFile(path.join(__dirname, '..', 'LocalTeX.vbs'), 'utf8');
+test('ships a detached reusable Nanoleaf launcher', async () => {
+  const launcher = await readFile(path.join(__dirname, '..', 'launch-nanoleaf.ps1'), 'utf8');
+  const windowlessLauncher = await readFile(path.join(__dirname, '..', 'Nanoleaf.vbs'), 'utf8');
   const startCommand = await readFile(path.join(__dirname, '..', 'start-local.cmd'), 'utf8');
-  const stopScript = await readFile(path.join(__dirname, '..', 'stop-localtex.ps1'), 'utf8');
-  assert.match(launcher, /LOCAL_TEX_HOST = '0\.0\.0\.0'/);
+  const stopScript = await readFile(path.join(__dirname, '..', 'stop-nanoleaf.ps1'), 'utf8');
+  assert.match(launcher, /NANOLEAF_HOST = '0\.0\.0\.0'/);
   assert.match(launcher, /-WindowStyle Hidden/);
   assert.doesNotMatch(launcher, /-WindowStyle Normal/);
   assert.match(windowlessLauncher, /WScript\.Shell/);
-  assert.match(windowlessLauncher, /launch-localtex\.ps1/);
-  assert.match(startCommand, /launch-localtex\.ps1/);
+  assert.match(windowlessLauncher, /launch-nanoleaf\.ps1/);
+  assert.match(startCommand, /launch-nanoleaf\.ps1/);
   assert.doesNotMatch(startCommand, /node\.exe" server\.js/);
   assert.match(stopScript, /portable Node\.js process/);
 });
@@ -1168,11 +1168,11 @@ test('lists and reads a project document', async () => {
   const fileResponse = await fetch(`${baseUrl}/api/file?path=main.tex`);
   assert.equal(fileResponse.status, 200);
   const file = await fileResponse.json();
-  assert.match(file.content, /LocalTeX First Document/);
+  assert.match(file.content, /Nanoleaf First Document/);
 });
 
 test('writes browser saves directly to the local project file', async () => {
-  const content = 'Saved from the LocalTeX browser editor.\n';
+  const content = 'Saved from the Nanoleaf browser editor.\n';
   const saveResponse = await fetch(`${baseUrl}/api/file`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
@@ -1186,7 +1186,7 @@ test('provides a persistent local project list', async () => {
   const response = await fetch(`${baseUrl}/api/projects`);
   assert.equal(response.status, 200);
   const { projects } = await response.json();
-  const project = projects.find((item) => item.id === 'localtex-workspace');
+  const project = projects.find((item) => item.id === 'nanoleaf-workspace');
   assert.ok(project);
   assert.equal(project.name, 'Test project');
   assert.equal(project.exists, true);
@@ -1197,20 +1197,20 @@ test('persists the host display name outside browser storage', async () => {
   const response = await fetch(`${baseUrl}/api/profile`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ collaboratorName: 'LocalTeX Host' }),
+    body: JSON.stringify({ collaboratorName: 'Nanoleaf Host' }),
   });
   const result = await response.json();
   assert.equal(response.status, 200);
-  assert.equal(result.profile.collaboratorName, 'LocalTeX Host');
+  assert.equal(result.profile.collaboratorName, 'Nanoleaf Host');
 
   const persisted = JSON.parse(fs.readFileSync(
-    path.join(process.env.LOCAL_TEX_DATA_ROOT, 'profile-settings.json'),
+    path.join(process.env.NANOLEAF_DATA_ROOT, 'profile-settings.json'),
     'utf8',
   ));
-  assert.equal(persisted.collaboratorName, 'LocalTeX Host');
+  assert.equal(persisted.collaboratorName, 'Nanoleaf Host');
 
   const config = await (await fetch(`${baseUrl}/api/config`)).json();
-  assert.equal(config.profile.collaboratorName, 'LocalTeX Host');
+  assert.equal(config.profile.collaboratorName, 'Nanoleaf Host');
 });
 
 test('rejects paths outside the workspace', async () => {
@@ -1221,7 +1221,7 @@ test('rejects paths outside the workspace', async () => {
 });
 
 test('merges two concurrent collaborative edits and saves the result', { timeout: 10_000 }, async () => {
-  const socketUrl = `${baseUrl.replace(/^http/, 'ws')}/collaboration?project=localtex-workspace&path=collab.tex`;
+  const socketUrl = `${baseUrl.replace(/^http/, 'ws')}/collaboration?project=nanoleaf-workspace&path=collab.tex`;
   const first = new WebSocket(socketUrl);
   const second = new WebSocket(socketUrl);
   const firstDocument = new Y.Doc();
@@ -1286,7 +1286,7 @@ test('merges two concurrent collaborative edits and saves the result', { timeout
 
 test('pushes external local file edits into an active browser document', { timeout: 10_000 }, async () => {
   const socket = new WebSocket(
-    `${baseUrl.replace(/^http/, 'ws')}/collaboration?project=localtex-workspace&path=external-sync.tex`,
+    `${baseUrl.replace(/^http/, 'ws')}/collaboration?project=nanoleaf-workspace&path=external-sync.tex`,
   );
   const document = new Y.Doc();
 
@@ -1311,9 +1311,9 @@ test('pushes external local file edits into an active browser document', { timeo
   }
 });
 
-test('isolates oversized collaboration messages without stopping LocalTeX', { timeout: 10_000 }, async () => {
+test('isolates oversized collaboration messages without stopping Nanoleaf', { timeout: 10_000 }, async () => {
   const socket = new WebSocket(
-    `${baseUrl.replace(/^http/, 'ws')}/collaboration?project=localtex-workspace&path=collab.tex`,
+    `${baseUrl.replace(/^http/, 'ws')}/collaboration?project=nanoleaf-workspace&path=collab.tex`,
   );
   try {
     await once(socket, 'open');
@@ -1335,11 +1335,11 @@ test('lets the host enable, revoke, and reuse LAN sharing', { timeout: 20_000 },
     cwd: path.join(__dirname, '..'),
     env: {
       ...process.env,
-      LOCAL_TEX_DATA_ROOT: childDataRoot,
-      LOCAL_TEX_HOST: '0.0.0.0',
-      LOCAL_TEX_OPEN_BROWSER: '0',
-      LOCAL_TEX_PORT: String(port),
-      LOCAL_TEX_WORKSPACE: testWorkspace,
+      NANOLEAF_DATA_ROOT: childDataRoot,
+      NANOLEAF_HOST: '0.0.0.0',
+      NANOLEAF_OPEN_BROWSER: '0',
+      NANOLEAF_PORT: String(port),
+      NANOLEAF_WORKSPACE: testWorkspace,
     },
     stdio: ['ignore', 'pipe', 'pipe'],
     windowsHide: true,
@@ -1376,7 +1376,7 @@ test('lets the host enable, revoke, and reuse LAN sharing', { timeout: 20_000 },
     assert.equal((await fetch(remoteConfigUrl)).status, 200);
 
     const collaborationSocket = new WebSocket(
-      `ws://127.0.0.1:${port}/collaboration?project=localtex-workspace&path=collab.tex`,
+      `ws://127.0.0.1:${port}/collaboration?project=nanoleaf-workspace&path=collab.tex`,
     );
     const syncPromise = waitForMessage(collaborationSocket, (message) => message.type === 'sync');
     await once(collaborationSocket, 'open');
@@ -1405,7 +1405,7 @@ test('lets the host enable, revoke, and reuse LAN sharing', { timeout: 20_000 },
     assert.equal((await fetch(remoteConfigUrl)).status, 200);
 
     const secondSocket = new WebSocket(
-      `ws://127.0.0.1:${port}/collaboration?project=localtex-workspace&path=collab.tex`,
+      `ws://127.0.0.1:${port}/collaboration?project=nanoleaf-workspace&path=collab.tex`,
     );
     const secondSync = waitForMessage(secondSocket, (message) => message.type === 'sync');
     await once(secondSocket, 'open');
@@ -1470,11 +1470,11 @@ test('starts local work enabled and LAN sharing disabled after a restart', { tim
     cwd: path.join(__dirname, '..'),
     env: {
       ...process.env,
-      LOCAL_TEX_DATA_ROOT: childDataRoot,
-      LOCAL_TEX_HOST: '0.0.0.0',
-      LOCAL_TEX_OPEN_BROWSER: '0',
-      LOCAL_TEX_PORT: String(port),
-      LOCAL_TEX_WORKSPACE: testWorkspace,
+      NANOLEAF_DATA_ROOT: childDataRoot,
+      NANOLEAF_HOST: '0.0.0.0',
+      NANOLEAF_OPEN_BROWSER: '0',
+      NANOLEAF_PORT: String(port),
+      NANOLEAF_WORKSPACE: testWorkspace,
     },
     stdio: ['ignore', 'pipe', 'pipe'],
     windowsHide: true,
@@ -1561,7 +1561,7 @@ test('compiles the sample document and serves a PDF', { timeout: 120_000 }, asyn
   assert.equal(parsedPdf.numPages, 1);
   const parsedPage = await parsedPdf.getPage(1);
   const textContent = await parsedPage.getTextContent();
-  assert.match(textContent.items.map((item) => item.str || '').join(' '), /LocalTeX First Document/);
+  assert.match(textContent.items.map((item) => item.str || '').join(' '), /Nanoleaf First Document/);
   await loadingTask.destroy();
 
   const forwardResponse = await fetch(`${baseUrl}/api/synctex/view`, {

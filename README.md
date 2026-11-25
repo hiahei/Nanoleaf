@@ -1,6 +1,6 @@
-# LocalTeX
+# Nanoleaf
 
-LocalTeX 是一个自包含、本地优先的 LaTeX 写作工作台。它既可以只在本机使用，
+Nanoleaf 是一个自包含、本地优先的 LaTeX 写作工作台。它既可以只在本机使用，
 也可以在可信局域网中通过安全分享链接进行多人实时协作。
 
 本项目由 hiahei 设计与维护，使用 OpenAI Codex 辅助开发。
@@ -21,10 +21,10 @@ LocalTeX 是一个自包含、本地优先的 LaTeX 写作工作台。它既可�
 ## Codex 助手
 
 编辑页右侧提供独立的 Codex 抽屉，可分析编译日志、解释 LaTeX、润色选区或检查
-当前文件；抽屉关闭后不占用编辑器或 PDF 预览空间。LocalTeX 使用主机已有的
+当前文件；抽屉关闭后不占用编辑器或 PDF 预览空间。Nanoleaf 使用主机已有的
 `CODEX_HOME`、登录状态、模型和推理配置，不在
 网页、`data` 或论文目录中复制 API Key。修改本机 Codex 配置后，重新启动
-LocalTeX 服务即可生效。
+Nanoleaf 服务即可生效。
 
 Codex 消息中的 `$...$`、`$$...$$`、`\(...\)`、`\[...\]` 及常用公式环境会由
 随项目安装的 KaTeX 在本地渲染；代码块不会被当成公式处理，复制渲染结果时仍会
@@ -73,7 +73,7 @@ installed system-wide.
 
 `tools\system-miktex-uninstall-residue` is a quarantined backup of files left by
 the former per-user installation plus one invalid interrupted download. It is
-not searched or used by LocalTeX and can be deleted independently.
+not searched or used by Nanoleaf and can be deleted independently.
 
 ## 启动与停止
 
@@ -84,12 +84,12 @@ npm ci
 ```
 
 `workspace` 和 `data` 包含论文及本机运行信息，不进入 Git。首次启动时，
-LocalTeX 会自动创建空工作区和新的本机配置；随后可在主页重新添加论文目录。
+Nanoleaf 会自动创建空工作区和新的本机配置；随后可在主页重新添加论文目录。
 
 推荐直接双击无窗口启动入口：
 
 ```text
-LocalTeX.vbs
+Nanoleaf.vbs
 ```
 
 兼容入口仍然可用，它只会短暂调用启动器，不会留下 CMD 窗口：
@@ -98,7 +98,7 @@ LocalTeX.vbs
 start-local.cmd
 ```
 
-在 LocalTeX 项目根目录打开 PowerShell：
+在 Nanoleaf 项目根目录打开 PowerShell：
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\start-local.ps1
@@ -111,10 +111,10 @@ powershell -ExecutionPolicy Bypass -File .\start-local.ps1
 开启，局域网分享都会强制关闭。
 
 只有需要完全退出主机控制器时才使用下面的应急停止入口；完全退出后必须重新双击
-`LocalTeX.vbs` 才能启动：
+`Nanoleaf.vbs` 才能启动：
 
 ```text
-stop-localtex.cmd
+stop-nanoleaf.cmd
 ```
 
 开发调试时也可以运行下面的命令；这种方式只监听本机，不支持从页面动态开启分享：
@@ -125,7 +125,7 @@ npm start
 
 ## 局域网协作
 
-1. 双击 `LocalTeX.vbs` 打开 LocalTeX。
+1. 双击 `Nanoleaf.vbs` 打开 Nanoleaf。
 2. 在项目首页点击“协作分享”，或进入编辑器后点击右上角“分享”。
 3. 在“主机与协作控制”中确认工作服务已开启，然后点击“开启分享”。
 4. 点击“复制链接”，把完整链接发给同一局域网内的可信成员。
@@ -155,12 +155,12 @@ powershell -ExecutionPolicy Bypass -File .\allow-lan-firewall.ps1
 不要在酒店、机场等不可信网络上开启局域网模式。
 
 安全令牌保存在 `data\lan-settings.json`。不要公开分享它；如需更换令牌，请先
-停止 LocalTeX，删除该文件，再重新启动并开启分享。局域网模式没有互联网中继，
+停止 Nanoleaf，删除该文件，再重新启动并开启分享。局域网模式没有互联网中继，
 两台设备必须能够直接访问主机地址。
 
 ## Project list and local files
 
-LocalTeX opens on a project list. Use one of these actions:
+Nanoleaf opens on a project list. Use one of these actions:
 
 - **Open project folder**: choose any local folder containing a LaTeX project.
 - **Open .tex file**: choose a main `.tex` file; its parent folder becomes the project.
@@ -181,13 +181,13 @@ Copy the contents of the paper project into:
 Keep the paper project's original relative file and folder layout. The
 `workspace` directory is private local data and is excluded from Git.
 
-Refresh the file list in LocalTeX, select the correct main `.tex` document from
+Refresh the file list in Nanoleaf, select the correct main `.tex` document from
 the top of the editor, and compile.
 
 To use a paper stored elsewhere, set an environment variable before starting:
 
 ```powershell
-$env:LOCAL_TEX_WORKSPACE = 'D:\path\to\paper'
+$env:NANOLEAF_WORKSPACE = 'D:\path\to\paper'
 npm start
 ```
 
@@ -208,4 +208,4 @@ also excluded from Git.
 有效；下次启动会恢复本地工作服务，同时保持局域网分享关闭。
 
 实时文本合并运行在项目内置的 Yjs 运行时上，Node.js、Yjs、WebSocket 和 MiKTeX
-依赖均位于当前 LocalTeX 项目目录内，不依赖 C 盘的全局安装。
+依赖均位于当前 Nanoleaf 项目目录内，不依赖 C 盘的全局安装。

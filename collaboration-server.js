@@ -204,7 +204,7 @@ function attachCollaborationServer(server, {
       return;
     }
     if (!authenticate(request, url)) {
-      rejectUpgrade(socket, 401, 'A valid LocalTeX access token is required.');
+      rejectUpgrade(socket, 401, 'A valid Nanoleaf access token is required.');
       return;
     }
 
@@ -232,7 +232,7 @@ function attachCollaborationServer(server, {
     room.clients.add(socket);
     // Protocol and payload errors belong to this connection. Handling the
     // event prevents an oversized or malformed client message from bringing
-    // down the entire LocalTeX host process.
+    // down the entire Nanoleaf host process.
     socket.on('error', () => {});
     send(socket, {
       type: 'sync',

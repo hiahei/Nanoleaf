@@ -1,3 +1,3 @@
 import * as Y from 'yjs';
 
-window.LocalTeXCollaborationRuntime = Object.freeze({ Y });
+window.NanoleafCollaborationRuntime = Object.freeze({ Y });
