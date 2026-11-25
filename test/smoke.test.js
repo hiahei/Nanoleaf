@@ -372,7 +372,10 @@ test('serves the editor and local configuration', async () => {
   const serverSource = await readFile(path.join(__dirname, '..', 'server.js'), 'utf8');
   assert.match(serverSource, /url\.pathname === '\/api\/open-folder'/);
   assert.match(serverSource, /Only the Nanoleaf host can open local folders/);
-  assert.match(serverSource, /explorer\.exe/);
+  assert.match(serverSource, /path\.join\(process\.env\.WINDIR \|\| 'C:\\\\Windows', 'explorer\.exe'\)/);
+  assert.match(serverSource, /\/select,"\$\{targetPath\}"/);
+  assert.match(serverSource, /windowsHide: false/);
+  assert.match(serverSource, /explorer\.once\('spawn'/);
   assert.match(script, /elements\.mainDocumentSelect\.disabled = running/);
   assert.match(script, /projectQuery/);
   assert.match(script, /function projectIdFromUrl/);

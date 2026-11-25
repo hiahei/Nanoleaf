@@ -1280,13 +1280,18 @@ async function handleApi(request, response, url) {
       return sendJson(response, 501, { error: 'Opening folders in the system file manager is only supported on Windows.' });
     }
     const stats = await fsp.stat(targetPath);
+    const explorerPath = path.join(process.env.WINDIR || 'C:\\Windows', 'explorer.exe');
     const explorerArgs = stats.isDirectory()
       ? [targetPath]
-      : [`/select,${targetPath}`];
-    const explorer = spawn('explorer.exe', explorerArgs, {
+      : [`/select,"${targetPath}"`];
+    const explorer = spawn(explorerPath, explorerArgs, {
       detached: true,
       stdio: 'ignore',
-      windowsHide: true,
+      windowsHide: false,
+    });
+    await new Promise((resolve, reject) => {
+      explorer.once('spawn', resolve);
+      explorer.once('error', reject);
     });
     explorer.unref();
     return sendJson(response, 200, { ok: true, path: relativePath });
