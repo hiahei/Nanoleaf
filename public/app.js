@@ -1849,6 +1849,26 @@ function pathIsWithin(filePath, target) {
 let closeFileContextMenu = () => {};
 let fileOperationRunning = false;
 
+function fileTreeDropDirectory(event) {
+  const row = event.target.closest?.('.tree-row');
+  const file = row ? state.files.find((entry) => entry.path === row.dataset.path) : null;
+  if (file?.type === 'directory') return file.path;
+  return file ? parentDirectory(file.path) : '';
+}
+
+async function openLocalFolder(file) {
+  if (!state.activeProject || fileOperationRunning) return;
+  try {
+    await api('/api/open-folder', {
+      method: 'POST',
+      body: JSON.stringify({ path: file.path }),
+    });
+    showToast(file.type === 'directory' ? `已打开 ${file.path || '项目根目录'}` : `已打开 ${file.path} 所在目录`);
+  } catch (error) {
+    showToast(error.message, true);
+  }
+}
+
 async function performFileAction(action, file) {
   if (fileOperationRunning || !state.activeProject) return;
   if (state.compileRunning) {
@@ -1935,7 +1955,12 @@ function initializeFileActions() {
     if (restoreFocus && target) focusFileRow(target.path);
     target = null;
   };
-  for (const [action, label, shortcut] of [['create', '新建文件', ''], ['rename', '重命名', 'F2'], ['delete', '删除', 'Delete']]) {
+  for (const [action, label, shortcut] of [
+    ['open-folder', '在资源管理器中打开', ''],
+    ['create', '新建文件', ''],
+    ['rename', '重命名', 'F2'],
+    ['delete', '删除', 'Delete'],
+  ]) {
     const button = document.createElement('button');
     button.type = 'button';
     button.setAttribute('role', 'menuitem');
@@ -1948,25 +1973,32 @@ function initializeFileActions() {
     button.addEventListener('click', () => {
       const file = target;
       closeFileContextMenu(true);
-      if (file) void performFileAction(action, file);
+      if (!file) return;
+      if (action === 'open-folder') void openLocalFolder(file);
+      else void performFileAction(action, file);
     });
     menu.append(button);
   }
   elements.fileTree.tabIndex = -1;
   elements.fileTree.addEventListener('contextmenu', (event) => {
     const row = event.target.closest('.tree-row');
-    if (!row) return;
     event.preventDefault();
-    target = state.files.find((file) => file.path === row.dataset.path);
+    target = row
+      ? state.files.find((file) => file.path === row.dataset.path)
+      : { path: '', type: 'directory' };
     if (!target) return;
-    row.focus();
+    const openFolderButton = menu.querySelector('.open-folder');
+    if (openFolderButton) openFolderButton.hidden = state.config?.lan?.isHost === false;
+    row?.focus();
     menu.hidden = false;
-    const bounds = row.getBoundingClientRect();
+    const bounds = row?.getBoundingClientRect?.()
+      || elements.fileTree.getBoundingClientRect?.()
+      || { left: 4, bottom: 4 };
     const x = event.clientX || bounds.left;
     const y = event.clientY || bounds.bottom;
     menu.style.left = `${Math.max(4, Math.min(x, window.innerWidth - menu.offsetWidth - 4))}px`;
     menu.style.top = `${Math.max(4, Math.min(y, window.innerHeight - menu.offsetHeight - 4))}px`;
-    menu.querySelector('button').focus();
+    [...menu.querySelectorAll('button')].find((button) => !button.hidden)?.focus();
   });
   elements.fileTree.addEventListener('keydown', (event) => {
     if (event.repeat || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return;
@@ -1996,6 +2028,34 @@ function initializeFileActions() {
     if (!menu.contains(event.target)) closeFileContextMenu();
   });
   elements.fileTree.addEventListener('scroll', () => closeFileContextMenu());
+  elements.fileTree.addEventListener('dragenter', (event) => {
+    if (!event.dataTransfer?.types?.includes('Files')) return;
+    event.preventDefault();
+    elements.fileTree.classList.add('file-drop-active');
+    const row = event.target.closest?.('.tree-row');
+    row?.classList.add('drop-target');
+  });
+  elements.fileTree.addEventListener('dragover', (event) => {
+    if (!event.dataTransfer?.types?.includes('Files')) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'copy';
+    elements.fileTree.classList.add('file-drop-active');
+    elements.fileTree.querySelectorAll('.drop-target').forEach((row) => row.classList.remove('drop-target'));
+    event.target.closest?.('.tree-row')?.classList.add('drop-target');
+  });
+  elements.fileTree.addEventListener('dragleave', (event) => {
+    if (event.relatedTarget && elements.fileTree.contains(event.relatedTarget)) return;
+    elements.fileTree.classList.remove('file-drop-active');
+    elements.fileTree.querySelectorAll('.drop-target').forEach((row) => row.classList.remove('drop-target'));
+  });
+  elements.fileTree.addEventListener('drop', (event) => {
+    if (!event.dataTransfer?.files?.length) return;
+    event.preventDefault();
+    const directory = fileTreeDropDirectory(event);
+    elements.fileTree.classList.remove('file-drop-active');
+    elements.fileTree.querySelectorAll('.drop-target').forEach((row) => row.classList.remove('drop-target'));
+    void uploadFiles(event.dataTransfer.files, directory, false);
+  });
   window.addEventListener('resize', () => closeFileContextMenu());
   window.addEventListener('blur', () => closeFileContextMenu());
 }
@@ -4384,10 +4444,21 @@ async function createFile(directory = '') {
   }
 }
 
-async function uploadFiles(fileList) {
+async function uploadFiles(fileList, dropDirectory = '', promptForPath = true) {
   for (const file of fileList) {
-    const target = window.prompt(`保存 ${file.name} 到项目中的路径：`, file.name);
+    const defaultPath = dropDirectory ? `${dropDirectory}/${file.name}` : file.name;
+    const target = promptForPath
+      ? window.prompt(`保存 ${file.name} 到项目中的路径：`, defaultPath)
+      : defaultPath;
     if (!target) continue;
+
+    const normalizedTarget = target.replaceAll('\\', '/').replace(/^\/+/, '');
+    if (!normalizedTarget || normalizedTarget.split('/').at(-1) === '' || normalizedTarget.split('/').at(-1) === '.' || normalizedTarget.split('/').at(-1) === '..') {
+      showToast(`无法复制 ${file.name}：目标文件名无效。`, true);
+      continue;
+    }
+    const existing = state.files.some((entry) => entry.type === 'file' && entry.path.toLowerCase() === normalizedTarget.toLowerCase());
+    if (existing && !window.confirm(`文件 ${normalizedTarget} 已存在，是否覆盖？`)) continue;
 
     const dataUrl = await new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -4398,11 +4469,11 @@ async function uploadFiles(fileList) {
     const base64 = String(dataUrl).split(',')[1];
     await api('/api/upload', {
       method: 'POST',
-      body: JSON.stringify({ path: target, data: base64 }),
+      body: JSON.stringify({ path: normalizedTarget, data: base64 }),
     });
   }
   await refreshFiles();
-  showToast('文件上传完成。');
+  showToast(promptForPath ? '文件上传完成。' : `已复制 ${fileList.length} 个文件到 ${dropDirectory || '项目根目录'}。`);
 }
 
 async function initialize() {

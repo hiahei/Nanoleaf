@@ -1269,6 +1269,17 @@ body.resizing-panels iframe {
   flex: 1;
   overflow: auto;
   padding: 7px 7px 10px;
+  transition: background 140ms ease, box-shadow 140ms ease;
+}
+
+.file-tree.file-drop-active {
+  background: rgba(38, 137, 108, 0.08);
+  box-shadow: inset 0 0 0 1px rgba(38, 137, 108, 0.35);
+}
+
+.tree-row.drop-target {
+  background: var(--accent-soft);
+  box-shadow: inset 0 0 0 1px rgba(38, 137, 108, 0.4);
 }
 
 .file-context-menu {

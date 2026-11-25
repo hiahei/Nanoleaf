@@ -20,6 +20,7 @@ function fixture({ name = 'renamed.tex', confirm = true, active = 'Sections/main
     window: { prompt: () => name, confirm: () => confirm },
     parentDirectory: value => value.split('/').slice(0, -1).join('/'),
     showToast: (...args) => calls.push(['toast', ...args]),
+    openLocalFolder: (file) => calls.push(['open-folder', file.path]),
     saveFile: async () => { calls.push(['save']); return true; },
     stopDocumentCollaboration: () => calls.push(['stop']),
     startDocumentCollaboration: async () => true,
@@ -39,6 +40,7 @@ function fixture({ name = 'renamed.tex', confirm = true, active = 'Sections/main
     openFile: async file => { state.activePath = file.path; calls.push(['open', file.path]); },
   });
   vm.runInContext(actions, context);
+  context.openLocalFolder = (file) => calls.push(['open-folder', file.path]);
   return { context, state, calls, tree };
 }
 
@@ -69,7 +71,7 @@ test('cancelled deletion and invalid or conflicting names do not mutate files', 
 });
 
 test('context menu and tree-only shortcuts dispatch the target file', async () => {
-  const { context, tree, state } = fixture();
+  const { context, tree, state, calls } = fixture();
   const handlers = new Map();
   const selected = [];
   let focused;
@@ -86,6 +88,7 @@ test('context menu and tree-only shortcuts dispatch the target file', async () =
   const body = new Element();
   context.document = { body, createElement: () => new Element(), addEventListener() {} };
   Object.assign(context.window, { innerWidth: 800, innerHeight: 600, addEventListener() {} });
+  tree.getBoundingClientRect = () => ({ left: 4, bottom: 4 });
   tree.addEventListener = (name, handler) => handlers.set(name, handler);
   context.performFileAction = (action, file) => selected.push([action, file.path]);
   context.initializeFileActions();
@@ -102,5 +105,35 @@ test('context menu and tree-only shortcuts dispatch the target file', async () =
   handlers.get('keydown')({ ...event, key: 'F2' });
   handlers.get('keydown')({ ...event, key: 'Delete', repeat: true });
   handlers.get('keydown')({ ...event, key: 'Delete', ctrlKey: true });
-  assert.deepEqual(selected, [['create', row.dataset.path], ['delete', row.dataset.path], ['rename', row.dataset.path]]);
+  assert.deepEqual(selected, [['delete', row.dataset.path], ['rename', row.dataset.path]]);
+  assert.deepEqual(calls.find((call) => call[0] === 'open-folder'), ['open-folder', row.dataset.path]);
+});
+
+test('context menu opens the selected local folder and supports the project root', () => {
+  const { context, tree, state, calls } = fixture();
+  const handlers = new Map();
+  class Element {
+    constructor() { this.children = []; this.handlers = {}; this.style = {}; this.offsetWidth = 190; this.offsetHeight = 80; this.hidden = true; }
+    setAttribute() {}
+    append(...children) { this.children.push(...children); }
+    addEventListener(name, handler) { this.handlers[name] = handler; }
+    querySelector() { return this.children[0]; }
+    querySelectorAll() { return this.children; }
+    focus() {}
+    contains(element) { return this.children.includes(element); }
+  }
+  const body = new Element();
+  context.document = { body, createElement: () => new Element(), addEventListener() {} };
+  Object.assign(context.window, { innerWidth: 800, innerHeight: 600, addEventListener() {} });
+  tree.getBoundingClientRect = () => ({ left: 4, bottom: 4 });
+  tree.addEventListener = (name, handler) => handlers.set(name, handler);
+  context.initializeFileActions();
+  const directoryRow = { dataset: { path: 'Sections' }, focus() {}, getBoundingClientRect: () => ({ left: 10, bottom: 20 }) };
+  handlers.get('contextmenu')({ target: { closest: () => directoryRow }, preventDefault() {}, clientX: 20, clientY: 20 });
+  const menu = body.children[0];
+  menu.children[0].handlers.click();
+  assert.deepEqual(calls.at(-1), ['open-folder', 'Sections']);
+  handlers.get('contextmenu')({ target: { closest: () => null }, preventDefault() {}, clientX: 20, clientY: 20 });
+  menu.children[0].handlers.click();
+  assert.deepEqual(calls.at(-1), ['open-folder', '']);
 });

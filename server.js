@@ -1266,6 +1266,32 @@ async function handleApi(request, response, url) {
     return sendJson(response, 200, { files: await listWorkspace(workspaceRoot) });
   }
 
+  if (request.method === 'POST' && url.pathname === '/api/open-folder') {
+    if (!isHostRequest(request)) {
+      return sendJson(response, 403, { error: 'Only the LocalTeX host can open local folders.' });
+    }
+    const body = await readJsonBody(request);
+    const relativePath = normalizeRelative(body.path || '');
+    const targetPath = resolveInside(workspaceRoot, relativePath);
+    if (!fs.existsSync(targetPath)) {
+      return sendJson(response, 404, { error: 'The requested local path does not exist.' });
+    }
+    if (process.platform !== 'win32') {
+      return sendJson(response, 501, { error: 'Opening folders in the system file manager is only supported on Windows.' });
+    }
+    const stats = await fsp.stat(targetPath);
+    const explorerArgs = stats.isDirectory()
+      ? [targetPath]
+      : [`/select,${targetPath}`];
+    const explorer = spawn('explorer.exe', explorerArgs, {
+      detached: true,
+      stdio: 'ignore',
+      windowsHide: true,
+    });
+    explorer.unref();
+    return sendJson(response, 200, { ok: true, path: relativePath });
+  }
+
   if (request.method === 'GET' && url.pathname === '/api/file') {
     const relativePath = url.searchParams.get('path') || '';
     const absolutePath = resolveInside(workspaceRoot, relativePath);

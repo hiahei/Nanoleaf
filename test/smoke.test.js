@@ -365,6 +365,14 @@ test('serves the editor and local configuration', async () => {
   assert.match(script, /openFile\(file, false, true, true\)/);
   assert.match(script, /if \(selectForCompile && isTexFilePath\(data\.path\)\) \{[\s\S]*?rootDocumentFor\(data\.path, data\.content\)/);
   assert.match(script, /function rootDocumentFor\(/);
+  assert.match(script, /\/api\/open-folder/);
+  assert.match(script, /function fileTreeDropDirectory\(/);
+  assert.match(script, /dataTransfer\.dropEffect = 'copy'/);
+  assert.match(script, /uploadFiles\(event\.dataTransfer\.files, directory, false\)/);
+  const serverSource = await readFile(path.join(__dirname, '..', 'server.js'), 'utf8');
+  assert.match(serverSource, /url\.pathname === '\/api\/open-folder'/);
+  assert.match(serverSource, /Only the LocalTeX host can open local folders/);
+  assert.match(serverSource, /explorer\.exe/);
   assert.match(script, /elements\.mainDocumentSelect\.disabled = running/);
   assert.match(script, /projectQuery/);
   assert.match(script, /function projectIdFromUrl/);
@@ -456,6 +464,8 @@ test('serves the editor and local configuration', async () => {
   assert.match(styles, /\.editor-surface\.findbar-open/);
   assert.match(styles, /inset: var\(--editor-findbar-height, 0\) 0 0/);
   assert.match(styles, /\.tree-compile-target/);
+  assert.match(styles, /\.file-tree\.file-drop-active/);
+  assert.match(styles, /\.tree-row\.drop-target/);
   assert.match(styles, /\.pdf-sync-marker/);
   assert.match(styles, /#pdfPreview\[hidden\] \+ \.pdf-preview-controls/);
   assert.match(styles, /\.pdf-reset-zoom-button/);
