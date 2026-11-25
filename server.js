@@ -1280,20 +1280,38 @@ async function handleApi(request, response, url) {
       return sendJson(response, 501, { error: 'Opening folders in the system file manager is only supported on Windows.' });
     }
     const stats = await fsp.stat(targetPath);
-    const explorerPath = path.join(process.env.WINDIR || 'C:\\Windows', 'explorer.exe');
-    const explorerArgs = stats.isDirectory()
-      ? [targetPath]
-      : [`/select,"${targetPath}"`];
-    const explorer = spawn(explorerPath, explorerArgs, {
-      detached: true,
-      stdio: 'ignore',
-      windowsHide: false,
-    });
+    const windowsRoot = process.env.WINDIR || process.env.SystemRoot || 'C:\\Windows';
+    const explorerPath = path.join(windowsRoot, 'explorer.exe');
+    const powershellPath = path.join(windowsRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
+    const powerShellLiteral = (value) => `'${String(value).replaceAll("'", "''")}'`;
+    const explorerArgument = stats.isDirectory()
+      ? targetPath
+      : `/select,"${targetPath}"`;
+    const powerShellCommand = [
+      '$ErrorActionPreference = "Stop"',
+      `Start-Process -FilePath ${powerShellLiteral(explorerPath)} -ArgumentList @(${powerShellLiteral(explorerArgument)}) | Out-Null`,
+    ].join('; ');
     await new Promise((resolve, reject) => {
-      explorer.once('spawn', resolve);
-      explorer.once('error', reject);
+      const launcher = spawn(powershellPath, [
+        '-NoLogo',
+        '-NoProfile',
+        '-NonInteractive',
+        '-WindowStyle',
+        'Hidden',
+        '-Command',
+        powerShellCommand,
+      ], {
+        stdio: ['ignore', 'ignore', 'pipe'],
+        windowsHide: true,
+      });
+      let errorOutput = '';
+      launcher.stderr.on('data', (chunk) => { errorOutput += String(chunk); });
+      launcher.once('error', reject);
+      launcher.once('close', (code) => {
+        if (code === 0) resolve();
+        else reject(new Error(errorOutput.trim() || `Windows Explorer launcher exited with code ${code}.`));
+      });
     });
-    explorer.unref();
     return sendJson(response, 200, { ok: true, path: relativePath });
   }
 
