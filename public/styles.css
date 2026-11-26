@@ -809,20 +809,8 @@ textarea:focus-visible {
 .brand-mark {
   width: 38px;
   height: 38px;
-  display: grid;
-  place-items: center;
   border-radius: 10px;
-  background: linear-gradient(145deg, #1b302a, #10211c);
-  color: white;
-  font-family: Georgia, serif;
-  font-size: 19px;
-  font-weight: 700;
-  letter-spacing: -1px;
   box-shadow: 0 7px 16px rgba(19, 45, 37, 0.18);
-}
-
-.brand-mark span {
-  color: #77d6bb;
 }
 
 h1 {

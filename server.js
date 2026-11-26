@@ -10,6 +10,7 @@ const { createCodexService } = require('./codex-service');
 
 const APP_ROOT = __dirname;
 const PUBLIC_ROOT = path.join(APP_ROOT, 'public');
+const APP_ASSETS_ROOT = path.join(APP_ROOT, 'assets');
 const ACE_ASSETS_ROOT = path.join(APP_ROOT, 'node_modules', 'ace-builds', 'src-min-noconflict');
 const PDFJS_ASSETS_ROOT = path.join(APP_ROOT, 'node_modules', 'pdfjs-dist');
 const KATEX_ASSETS_ROOT = path.join(APP_ROOT, 'node_modules', 'katex', 'dist');
@@ -1584,6 +1585,11 @@ async function requestHandler(request, response) {
     if (request.method === 'GET' && url.pathname.startsWith('/vendor/katex/')) {
       const requestedAsset = url.pathname.slice('/vendor/katex/'.length);
       return await serveFile(response, resolveInside(KATEX_ASSETS_ROOT, requestedAsset), true);
+    }
+
+    if (request.method === 'GET' && url.pathname.startsWith('/assets/')) {
+      const requestedAsset = url.pathname.slice('/assets/'.length);
+      return await serveFile(response, resolveInside(APP_ASSETS_ROOT, requestedAsset), true);
     }
 
     const requestedPath = url.pathname === '/' ? 'index.html' : url.pathname;

@@ -157,6 +157,10 @@ test('serves the editor and local configuration', async () => {
   assert.equal(pageResponse.status, 200);
   const page = await pageResponse.text();
   assert.match(page, /Nanoleaf/);
+  assert.match(page, /href="\/assets\/nanoleaf\.svg"/);
+  const iconResponse = await fetch(`${baseUrl}/assets/nanoleaf.svg`);
+  assert.equal(iconResponse.status, 200);
+  assert.match(iconResponse.headers.get('content-type') || '', /image\/svg\+xml/);
   assert.match(page, /id="sidebarResizer"/);
   assert.match(page, /id="collapseSidebarButton"/);
   assert.match(page, /id="expandSidebarButton"/);

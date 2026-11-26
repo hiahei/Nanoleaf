@@ -1,5 +1,7 @@
 # Nanoleaf
 
+<img src="assets/nanoleaf.svg" alt="Nanoleaf icon" width="96">
+
 Nanoleaf 是一个自包含、本地优先的 LaTeX 写作工作台。它既可以只在本机使用，
 也可以在可信局域网中通过安全分享链接进行多人实时协作。
 

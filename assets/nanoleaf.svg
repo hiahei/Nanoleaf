@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+  <title id="title">Nanoleaf</title>
+  <desc id="desc">A glowing geometric leaf mark made from four colored panels.</desc>
+  <defs>
+    <linearGradient id="background" x1="18" y1="18" x2="238" y2="238" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#17352f"/>
+      <stop offset="1" stop-color="#071713"/>
+    </linearGradient>
+    <linearGradient id="top" x1="80" y1="38" x2="206" y2="104" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#c4ffe7"/>
+      <stop offset="1" stop-color="#42d5b2"/>
+    </linearGradient>
+    <linearGradient id="right" x1="215" y1="83" x2="156" y2="209" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#b7f8ff"/>
+      <stop offset="1" stop-color="#3ebbd8"/>
+    </linearGradient>
+    <linearGradient id="bottom" x1="174" y1="211" x2="46" y2="153" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#d8f6a0"/>
+      <stop offset="1" stop-color="#82d7a4"/>
+    </linearGradient>
+    <linearGradient id="left" x1="38" y1="181" x2="100" y2="48" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#ffd58b"/>
+      <stop offset="1" stop-color="#f6a7a7"/>
+    </linearGradient>
+    <filter id="glow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="5" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <rect x="10" y="10" width="236" height="236" rx="54" fill="url(#background)"/>
+  <g filter="url(#glow)" stroke="#e7fff7" stroke-opacity=".72" stroke-width="3" stroke-linejoin="round">
+    <path d="M128 25 211 73 175 111 92 63Z" fill="url(#top)"/>
+    <path d="m231 128-48 83-39-36 48-83Z" fill="url(#right)"/>
+    <path d="m128 231-83-48 36-39 83 48Z" fill="url(#bottom)"/>
+    <path d="m25 128 48-83 39 36-48 83Z" fill="url(#left)"/>
+  </g>
+  <path d="m128 91 37 37-37 37-37-37Z" fill="#0b2720" stroke="#d6fff0" stroke-width="4"/>
+  <circle cx="128" cy="128" r="8" fill="#ffffff"/>
+</svg>
